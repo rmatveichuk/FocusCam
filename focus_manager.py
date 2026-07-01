@@ -204,10 +204,7 @@ class FocusManagerWindow(QDockWidget):
             except Exception as e:
                 pass
 
-        # 1. Switch Viewport
-        camera_utils.switch_to_camera(camera_node)
-        
-        # 2. Apply Resolution (if any) - Applied immediately to sync with camera switch
+        # 1. Apply Resolution (if any) - Applied before switching camera to prevent Safe Frame cropping/zoom jump
         w, h, has_res = camera_utils.load_resolution(camera_node)
         if has_res:
             camera_utils.apply_resolution(w, h)
@@ -218,6 +215,9 @@ class FocusManagerWindow(QDockWidget):
                 camera_utils.save_resolution(camera_node, cur_w, cur_h)
                 # Update UI spinboxes to reflect the newly saved resolution
                 self.ui.select_camera(camera_node) 
+
+        # 2. Switch Viewport
+        camera_utils.switch_to_camera(camera_node)
                 
         # 3. Update overlays targeting
         self.overlay_mgr.set_target_camera(camera_node)
