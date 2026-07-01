@@ -254,12 +254,79 @@ def detect_renderer():
 
 # ── Corona helpers ───────────────────────────────────────────────────────────
 
+def _ensure_corona_camera_lightmix_element(camera_node):
+    """Ensure a CShading_LightMix element named LMix_<CameraName> exists in the scene."""
+    if rt is None or camera_node is None:
+        return None
+    element_name = "LMix_{}".format(camera_node.name)
+    try:
+        mgr = rt.maxOps.GetCurRenderElementMgr()
+        num_elements = mgr.NumRenderElements()
+
+        # Check if it already exists
+        for i in range(num_elements):
+            elem = mgr.GetRenderElement(i)
+            if str(rt.classOf(elem)).lower() == "cshading_lightmix":
+                if elem.name == element_name:
+                    return elem
+
+        # Create new CShading_LightMix element
+        new_elem = rt.execute("CShading_LightMix()")
+        if new_elem is not None:
+            new_elem.name = element_name
+            mgr.AddRenderElement(new_elem)
+            return new_elem
+    except Exception:
+        pass
+    return None
+
+
+def _remove_corona_camera_lightmix_element(camera_node):
+    """Delete the camera's specific CShading_LightMix element from the scene."""
+    if rt is None or camera_node is None:
+        return
+    element_name = "LMix_{}".format(camera_node.name)
+    try:
+        mgr = rt.maxOps.GetCurRenderElementMgr()
+        num_elements = mgr.NumRenderElements()
+        for i in range(num_elements):
+            elem = mgr.GetRenderElement(i)
+            if str(rt.classOf(elem)).lower() == "cshading_lightmix":
+                if elem.name == element_name:
+                    mgr.RemoveRenderElement(elem)
+                    break
+    except Exception:
+        pass
+
+
+def _find_corona_lightmix_channel_index(camera_node):
+    """Find the 0-based index of the CShading_LightMix render element for the camera."""
+    if rt is None or camera_node is None:
+        return 0
+    element_name = "LMix_{}".format(camera_node.name)
+    try:
+        mgr = rt.maxOps.GetCurRenderElementMgr()
+        num_elements = mgr.NumRenderElements()
+        lm_index = 0
+        for i in range(num_elements):
+            elem = mgr.GetRenderElement(i)
+            if str(rt.classOf(elem)).lower() == "cshading_lightmix":
+                if elem.name == element_name:
+                    return lm_index
+                lm_index += 1
+    except Exception:
+        pass
+    return 0
+
+
 def _save_corona_lightmix(camera_node):
     """Read Corona LightMix data via the CoronaFp interface and store it
     in the camera CA arrays. Supports Corona 12+ (VFB2).
     """
+    _ensure_corona_camera_lightmix_element(camera_node)
+    lm_idx = _find_corona_lightmix_channel_index(camera_node)
     try:
-        count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightSelectChannels 0"))
+        count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightSelectChannels {lm_idx}".format(lm_idx=lm_idx)))
     except Exception:
         return False
 
@@ -271,16 +338,16 @@ def _save_corona_lightmix(camera_node):
     for i in range(count):
         try:
             name = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectName 0 {idx}".format(idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectName {lm_idx} {idx}".format(lm_idx=lm_idx, idx=i)
             )
             intensity = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectIntensity 0 {idx}".format(idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectIntensity {lm_idx} {idx}".format(lm_idx=lm_idx, idx=i)
             )
             color = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectColor 0 {idx}".format(idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectColor {lm_idx} {idx}".format(lm_idx=lm_idx, idx=i)
             )
             enabled = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectEnabled 0 {idx}".format(idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectEnabled {lm_idx} {idx}".format(lm_idx=lm_idx, idx=i)
             )
 
             rt.append(names, str(name) if name else "")
@@ -323,6 +390,8 @@ def _apply_corona_lightmix(camera_node):
     if names is None or intensities is None:
         return False
 
+    _ensure_corona_camera_lightmix_element(camera_node)
+    lm_idx = _find_corona_lightmix_channel_index(camera_node)
     count = int(names.count) if hasattr(names, "count") else 0
 
     for i in range(count):
@@ -337,19 +406,27 @@ def _apply_corona_lightmix(camera_node):
             en = bool(enabled_states[idx_mx])
 
             rt.execute(
-                "(CoronaRenderer.CoronaFp).setLightSelectIntensity 0 {idx} {val}"
-                .format(idx=ch_idx, val=intensity_val)
+                "(CoronaRenderer.CoronaFp).setLightSelectIntensity {lm_idx} {idx} {val}"
+                .format(lm_idx=lm_idx, idx=ch_idx, val=intensity_val)
             )
             rt.execute(
-                "(CoronaRenderer.CoronaFp).setLightSelectColor 0 {idx} (color {r} {g} {b})"
-                .format(idx=ch_idx, r=cr, g=cg, b=cb)
+                "(CoronaRenderer.CoronaFp).setLightSelectColor {lm_idx} {idx} (color {r} {g} {b})"
+                .format(lm_idx=lm_idx, idx=ch_idx, r=cr, g=cg, b=cb)
             )
             rt.execute(
-                "(CoronaRenderer.CoronaFp).setLightSelectEnabled 0 {idx} {val}"
-                .format(idx=ch_idx, val="true" if en else "false")
+                "(CoronaRenderer.CoronaFp).setLightSelectEnabled {lm_idx} {idx} {val}"
+                .format(lm_idx=lm_idx, idx=ch_idx, val="true" if en else "false")
             )
         except Exception:
             continue
+
+    try:
+        rt.execute(
+            "(CoronaRenderer.CoronaFp).setDisplayedLightMixChannel {lm_idx}"
+            .format(lm_idx=lm_idx)
+        )
+    except Exception:
+        pass
 
     return True
 
@@ -510,6 +587,11 @@ def clear_lightmix_preset(camera_node):
             ca.lmColors = rt.Array()
             ca.lmStates = rt.Array()
             ca.hasMixPreset = False
+
+        # Remove the camera-specific CShading_LightMix render element
+        renderer_type = detect_renderer()
+        if renderer_type == "corona":
+            _remove_corona_camera_lightmix_element(camera_node)
     except Exception:
         pass
 
