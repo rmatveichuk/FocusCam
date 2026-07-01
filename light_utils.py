@@ -348,19 +348,34 @@ def _get_lightmix_preset_path(camera_node):
     if rt is None or camera_node is None:
         return None
     
+    safe_name = "".join([c for c in camera_node.name if c.isalnum() or c in ("-", "_")]).strip()
+    filename = "LMix_{}.conf".format(safe_name)
+    
+    # Paths definition
+    temp_dir = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "Focus_LightMix")
+    temp_path = os.path.join(temp_dir, filename)
+    
     scene_path = rt.maxFilePath
     if scene_path and os.path.exists(scene_path):
         presets_dir = os.path.join(scene_path, "Focus_LightMix")
+        target_path = os.path.join(presets_dir, filename)
+        
+        # If the file exists in TEMP but not in the scene folder, copy it over
+        if not os.path.exists(target_path) and os.path.exists(temp_path):
+            try:
+                os.makedirs(presets_dir, exist_ok=True)
+                import shutil
+                shutil.copy2(temp_path, target_path)
+            except Exception:
+                pass
+                
+        return target_path
     else:
-        presets_dir = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "Focus_LightMix")
-        
-    try:
-        os.makedirs(presets_dir, exist_ok=True)
-    except Exception:
-        pass
-        
-    safe_name = "".join([c for c in camera_node.name if c.isalnum() or c in ("-", "_")]).strip()
-    return os.path.join(presets_dir, "LMix_{}.conf".format(safe_name))
+        try:
+            os.makedirs(temp_dir, exist_ok=True)
+        except Exception:
+            pass
+        return temp_path
 
 
 def _save_corona_lightmix(camera_node):
