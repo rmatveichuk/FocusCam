@@ -334,58 +334,96 @@ class FocusManagerWindow(QDockWidget):
         super().closeEvent(event)
 
 
-# Global reference to keep window alive in 3ds Max
+# Global references to keep window alive and track state in 3ds Max
 _focus_window = None
+_focus_window_shown = False  # Explicit flag — reliable toggle state for docked QDockWidgets
 
-def show_focus_window():
-    """Launch the Focus UI in 3ds Max."""
-    global _focus_window
-    
-    # Find existing dock widget by object name safely
+
+def _cleanup_orphaned_windows(max_main_window=None):
+    """Find and destroy ALL FocusDockWidget instances not tracked by our global.
+    Needed after reinstall (MZP overwrites module → globals reset → old window orphaned)."""
     from PySide6.QtWidgets import QApplication, QDockWidget
-    existing = None
+    to_close = []
     try:
         for widget in QApplication.topLevelWidgets():
             try:
-                if widget.objectName() == "FocusDockWidget":
-                    existing = widget
-                    break
-                found = widget.findChild(QDockWidget, "FocusDockWidget")
-                if found:
-                    existing = found
-                    break
+                if isinstance(widget, QDockWidget) and widget.objectName() == "FocusDockWidget":
+                    to_close.append(widget)
+                children = widget.findChildren(QDockWidget, "FocusDockWidget")
+                to_close.extend(children)
             except (RuntimeError, ReferenceError):
                 pass
     except Exception:
         pass
 
-    if existing is not None:
+    for w in to_close:
         try:
-            existing.close()
-            existing.deleteLater()
+            if max_main_window:
+                max_main_window.removeDockWidget(w)
+            w.close()
+            w.deleteLater()
+        except Exception:
+            pass
+
+    if to_close:
+        try:
             QApplication.processEvents()
         except Exception:
             pass
 
-    # Try to get the 3ds Max main window as parent
-    max_main_window = None
-    try:
-        import qtmax
-        max_main_window = qtmax.GetQMaxMainWindow()
-    except Exception:
-        pass
 
-    _focus_window = FocusManagerWindow(parent=max_main_window)
-    
-    if max_main_window:
+def show_focus_window():
+    """
+    Launch the Focus UI in 3ds Max.
+    Toggle: first press = show, second press = hide, third = show again, etc.
+    Uses an explicit flag because QDockWidget.isHidden()/isVisible() are
+    unreliable when the widget is docked inside 3ds Max's main window.
+    """
+    global _focus_window, _focus_window_shown
+
+    import qtmax
+    from PySide6.QtWidgets import QApplication
+    max_main_window = qtmax.GetQMaxMainWindow()
+
+    # -- Check if the existing window object is still alive --
+    if _focus_window is not None:
         try:
-            max_main_window.addDockWidget(Qt.RightDockWidgetArea, _focus_window)
-            _focus_window.setFloating(True)  # Starts floating, but is dockable
+            _focus_window.objectName()  # Probe: raises RuntimeError if C++ object destroyed
+        except RuntimeError:
+            # Window was closed via the X button — C++ object is gone
+            _focus_window = None
+            _focus_window_shown = False
+
+    # -- If globals were reset (e.g. after MZP reinstall), clean up orphaned windows first --
+    if _focus_window is None:
+        _cleanup_orphaned_windows(max_main_window)
+
+    # -- TOGGLE: if the window exists and was shown, hide it --
+    if _focus_window is not None and _focus_window_shown:
+        try:
+            _focus_window.hide()
         except Exception:
             pass
-            
+        _focus_window_shown = False
+        return
+
+    # -- CREATE: build window if it doesn't exist yet --
+    is_new = False
+    if _focus_window is None:
+        _focus_window = FocusManagerWindow(parent=max_main_window)
+        is_new = True
+
+    # -- SHOW: dock and display --
+    if max_main_window and is_new:
+        max_main_window.addDockWidget(Qt.LeftDockWidgetArea, _focus_window)
+        _focus_window.setFloating(False)
+
     _focus_window.show()
+    _focus_window.raise_()
+    _focus_window_shown = True
+
 
 if __name__ == "__main__":
     # For quick testing within MaxScript editor via `python.executeFile`
     show_focus_window()
+
