@@ -256,10 +256,10 @@ def detect_renderer():
 
 def _save_corona_lightmix(camera_node):
     """Read Corona LightMix data via the CoronaFp interface and store it
-    in the camera CA arrays.
+    in the camera CA arrays. Supports Corona 12+ (VFB2).
     """
     try:
-        count = int(rt.execute("(CoronaRenderer.CoronaFp).LightMix_GetChannelCount()"))
+        count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightSelectChannels 0"))
     except Exception:
         return False
 
@@ -271,16 +271,16 @@ def _save_corona_lightmix(camera_node):
     for i in range(count):
         try:
             name = rt.execute(
-                "(CoronaRenderer.CoronaFp).LightMix_GetChannelName {idx}".format(idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectName 0 {idx}".format(idx=i)
             )
             intensity = rt.execute(
-                "(CoronaRenderer.CoronaFp).LightMix_GetChannelIntensity {idx}".format(idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectIntensity 0 {idx}".format(idx=i)
             )
             color = rt.execute(
-                "(CoronaRenderer.CoronaFp).LightMix_GetChannelColor {idx}".format(idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectColor 0 {idx}".format(idx=i)
             )
             enabled = rt.execute(
-                "(CoronaRenderer.CoronaFp).LightMix_GetChannelEnabled {idx}".format(idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectEnabled 0 {idx}".format(idx=i)
             )
 
             rt.append(names, str(name) if name else "")
@@ -307,7 +307,7 @@ def _save_corona_lightmix(camera_node):
 
 
 def _apply_corona_lightmix(camera_node):
-    """Restore Corona LightMix channels from the camera's CA."""
+    """Restore Corona LightMix channels from the camera's CA. Supports Corona 12+ (VFB2)."""
     try:
         ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
         if ca is None or not ca.hasMixPreset:
@@ -337,15 +337,15 @@ def _apply_corona_lightmix(camera_node):
             en = bool(enabled_states[idx_mx])
 
             rt.execute(
-                "(CoronaRenderer.CoronaFp).LightMix_SetChannelIntensity {idx} {val}"
+                "(CoronaRenderer.CoronaFp).setLightSelectIntensity 0 {idx} {val}"
                 .format(idx=ch_idx, val=intensity_val)
             )
             rt.execute(
-                "(CoronaRenderer.CoronaFp).LightMix_SetChannelColor {idx} (color {r} {g} {b})"
+                "(CoronaRenderer.CoronaFp).setLightSelectColor 0 {idx} (color {r} {g} {b})"
                 .format(idx=ch_idx, r=cr, g=cg, b=cb)
             )
             rt.execute(
-                "(CoronaRenderer.CoronaFp).LightMix_SetChannelEnabled {idx} {val}"
+                "(CoronaRenderer.CoronaFp).setLightSelectEnabled 0 {idx} {val}"
                 .format(idx=ch_idx, val="true" if en else "false")
             )
         except Exception:
