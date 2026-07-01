@@ -1,4 +1,4 @@
-# RM Focus
+# FocusCam
 
 **RM Focus** is a modern, dockable camera management and composition tool for Autodesk 3ds Max, built with Python and PySide6. It streamlines the workflow for 3D artists by providing a visual, card-based interface for managing multiple cameras, individual render resolutions, and composition guides.
 
