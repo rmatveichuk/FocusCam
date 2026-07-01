@@ -10,6 +10,8 @@ Provides two layers of light control per camera:
                              (Corona or V-Ray).
 """
 
+import os
+
 # ── pymxs guard ──────────────────────────────────────────────────────────────
 try:
     import pymxs
