@@ -379,7 +379,19 @@ class FocusUI(QWidget):
             self.cam_list.setItemWidget(item, card)
 
     def set_toolbar_enabled(self, state: bool):
-        self.toolbar.setEnabled(state)
+        # Disable/enable camera-specific controls while keeping the refresh button enabled
+        self.w_spin.setEnabled(state)
+        self.h_spin.setEnabled(state)
+        self.lock_btn.setEnabled(state)
+        self.swap_btn.setEnabled(state)
+        
+        self.ov1.setEnabled(state)
+        self.ov2.setEnabled(state)
+        self.ov3.setEnabled(state)
+        self.ov4.setEnabled(state)
+        
+        self.light_btn.setEnabled(state)
+        self.lmix_btn.setEnabled(state)
 
     def select_camera(self, camera_node):
         """Visually select the camera and update toolbar state."""

@@ -53,6 +53,8 @@ class FocusManagerWindow(QDockWidget):
                     f.write("\n")
                 except Exception as inspect_err:
                     f.write(f"Failed to inspect switch_to_camera: {inspect_err}\n")
+
+
                 f.write("=== WINDOW INITIALIZATION END ===\n\n")
         except Exception:
             pass
@@ -286,6 +288,16 @@ class FocusManagerWindow(QDockWidget):
         """Poll 3ds Max Render Setup and update spinboxes and camera CA if they differ."""
         if not rt or not self.ui.active_camera_node:
             return
+            
+        # Skip synchronization if 3ds Max is currently rendering (production or interactive ActiveShade)
+        try:
+            if rt.isRendering():
+                return
+            as_bmp = rt.GetActiveShadeBitmap()
+            if as_bmp is not None and as_bmp != rt.undefined:
+                return
+        except Exception:
+            pass
             
         # Do not overwrite if user is actively typing in the spinboxes
         if self.ui.w_spin.hasFocus() or self.ui.h_spin.hasFocus():

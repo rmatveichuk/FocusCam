@@ -98,37 +98,32 @@ def is_node_valid(node) -> bool:
         return False
 
 
-def _has_ca(camera_node) -> bool:
-    """Return True if *camera_node* already carries the cameraLightPresets CA."""
+def _get_ca_block(camera_node, ca_name_str: str):
+    """Return the custom attribute block of name *ca_name_str* if present on *camera_node*."""
     if not is_node_valid(camera_node):
-        return False
+        return None
     try:
         ca_count = rt.custAttributes.count(camera_node)
         for i in range(1, ca_count + 1):
             ca = rt.custAttributes.get(camera_node, i)
-            ca_name = rt.custAttributes.getDef(ca)
-            if ca_name is not None:
-                if str(getattr(ca_name, "name", "")) == "cameraLightPresets":
-                    return True
+            ca_def = rt.custAttributes.getDef(ca)
+            if ca_def is not None:
+                if str(getattr(ca_def, "name", "")) == ca_name_str:
+                    return ca
     except Exception:
         pass
-    return False
+    return None
+
+
+def _has_ca(camera_node) -> bool:
+    """Return True if *camera_node* already carries the cameraLightPresets CA."""
+    return _get_ca_block(camera_node, "cameraLightPresets") is not None
+
 
 def _has_res_ca(camera_node) -> bool:
     """Return True if *camera_node* already carries the focusResolutionPresets CA."""
-    if not is_node_valid(camera_node):
-        return False
-    try:
-        ca_count = rt.custAttributes.count(camera_node)
-        for i in range(1, ca_count + 1):
-            ca = rt.custAttributes.get(camera_node, i)
-            ca_name = rt.custAttributes.getDef(ca)
-            if ca_name is not None:
-                if str(getattr(ca_name, "name", "")) == "focusResolutionPresets":
-                    return True
-    except Exception:
-        pass
-    return False
+    return _get_ca_block(camera_node, "focusResolutionPresets") is not None
+
 
 def ensure_custom_attributes(camera_node) -> None:
     """
@@ -141,6 +136,7 @@ def ensure_custom_attributes(camera_node) -> None:
         return
     ca_def = _get_ca_def()
     rt.custAttributes.add(camera_node, ca_def)
+
 
 def ensure_res_custom_attributes(camera_node) -> None:
     """
@@ -337,43 +333,41 @@ def grab_viewport_thumbnail(camera_node, width: int = 200, height: int = 112):
 # ===================================================================
 
 def save_resolution(camera_node, width: int, height: int) -> None:
-    """Persist render resolution into the camera's focusResolutionPresets CA."""
+    """Persist render resolution into the camera's CA."""
+    if not is_node_valid(camera_node):
+        return
     ensure_res_custom_attributes(camera_node)
-    try:
-        if hasattr(camera_node, "focusResolutionPresets"):
-            camera_node.focusResolutionPresets.renderWidth = width
-            camera_node.focusResolutionPresets.renderHeight = height
-            camera_node.focusResolutionPresets.hasResolution = True
-        else:
-            camera_node.renderWidth = width
-            camera_node.renderHeight = height
-            camera_node.hasResolution = True
-    except Exception:
-        pass
+    ca = _get_ca_block(camera_node, "focusResolutionPresets")
+    if ca is not None:
+        try:
+            ca.renderWidth = width
+            ca.renderHeight = height
+            ca.hasResolution = True
+        except Exception:
+            pass
 
 
 def load_resolution(camera_node) -> tuple:
     """
-    Read stored resolution from the camera's focusResolutionPresets CA.
+    Read stored resolution from the camera's CA.
 
     Returns:
         (width, height, has_resolution) — *has_resolution* is ``False`` when
         the CA is absent or no resolution has been saved yet.
     """
-    if not _has_res_ca(camera_node):
+    if not is_node_valid(camera_node):
         return (0, 0, False)
-    try:
-        if hasattr(camera_node, "focusResolutionPresets"):
-            has = bool(camera_node.focusResolutionPresets.hasResolution)
-            w = int(camera_node.focusResolutionPresets.renderWidth)
-            h = int(camera_node.focusResolutionPresets.renderHeight)
-        else:
-            has = bool(camera_node.hasResolution)
-            w = int(camera_node.renderWidth)
-            h = int(camera_node.renderHeight)
-        return (w, h, has)
-    except Exception:
-        return (0, 0, False)
+    ca = _get_ca_block(camera_node, "focusResolutionPresets")
+    if ca is not None:
+        try:
+            has = bool(ca.hasResolution)
+            w = int(ca.renderWidth)
+            h = int(ca.renderHeight)
+            return (w, h, has)
+        except Exception:
+            pass
+    return (0, 0, False)
+
 
 def get_effective_resolution(camera_node):
     w, h, has = load_resolution(camera_node)
@@ -387,8 +381,28 @@ def get_effective_resolution(camera_node):
 
 def apply_resolution(width: int, height: int) -> None:
     """Set the active 3ds Max render resolution."""
-    rt.renderWidth = width
-    rt.renderHeight = height
+    if rt is None:
+        return
+    
+    # Set the aspect ratio first to prevent padlock auto-scaling distortion
+    try:
+        if height > 0:
+            rt.rendImageAspectRatio = width / float(height)
+    except Exception:
+        pass
+
+    try:
+        rt.renderWidth = width
+        rt.renderHeight = height
+    except Exception:
+        pass
+
+    # Refresh Render Setup dialog UI if it is open
+    try:
+        if rt.renderSceneDialog.isOpen():
+            rt.renderSceneDialog.update()
+    except Exception:
+        pass
 
 
 def swap_resolution(camera_node) -> None:
@@ -412,7 +426,12 @@ def save_sort_order(camera_node, order: int) -> None:
     if not is_node_valid(camera_node):
         return
     ensure_custom_attributes(camera_node)
-    camera_node.sortOrder = order
+    ca = _get_ca_block(camera_node, "cameraLightPresets")
+    if ca is not None:
+        try:
+            ca.sortOrder = order
+        except Exception:
+            pass
 
 
 def get_sort_order(camera_node) -> int:
@@ -421,12 +440,15 @@ def get_sort_order(camera_node) -> int:
 
     Returns ``0`` when the CA is not present or the attribute cannot be read.
     """
-    if not _has_ca(camera_node):
+    if not is_node_valid(camera_node):
         return 0
-    try:
-        return int(camera_node.sortOrder)
-    except Exception:
-        return 0
+    ca = _get_ca_block(camera_node, "cameraLightPresets")
+    if ca is not None:
+        try:
+            return int(ca.sortOrder)
+        except Exception:
+            pass
+    return 0
 
 
 # ===================================================================

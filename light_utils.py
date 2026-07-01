@@ -35,7 +35,6 @@ def get_all_lights():
     if rt is None:
         return []
     try:
-        # rt.lights returns a MAXScript collection of all light-superclass nodes
         return list(rt.lights)
     except Exception:
         return []
@@ -63,7 +62,6 @@ def _get_light_enabled(light_node):
             return bool(rt.getProperty(light_node, "on"))
     except Exception:
         pass
-    # Fallback – assume the light is on
     return True
 
 
@@ -86,233 +84,120 @@ def _set_light_enabled(light_node, state):
         pass
 
 
+# =============================================================================
+# Helpers for Persistent Handles
+# =============================================================================
+
+def _get_node_handle(node):
+    """Get the persistent inode handle of a 3ds Max node."""
+    try:
+        return int(node.inode.handle)
+    except Exception:
+        pass
+    try:
+        return int(node.handle)
+    except Exception:
+        pass
+    try:
+        return int(rt.getProperty(node, "handle"))
+    except Exception:
+        pass
+    raise ValueError("Could not get persistent node handle")
+
+
+def _get_node_by_handle(handle):
+    """Retrieve a 3ds Max node by its persistent handle."""
+    try:
+        return rt.maxOps.getNodeByHandle(handle)
+    except Exception:
+        return None
+
+
 # ── save ─────────────────────────────────────────────────────────────────────
 
 def save_light_preset(camera_node):
     """Snapshot the on/off state of every scene light and store it in the
     camera node's Custom Attributes (``lightHandles``, ``lightStates``).
-
-    Calls ``camera_utils.ensure_custom_attributes`` first so the CA block
-    is guaranteed to exist.
     """
     if rt is None or camera_node is None:
         return
 
-    import traceback
-    log_path = r"C:\Users\RMatv\AppData\Local\Autodesk\3dsMax\2026 - 64bit\ENU\scripts\Focus\debug_log.txt"
     try:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"--- save_light_preset start for {getattr(camera_node, 'name', 'N/A')} ---\n")
-            
         camera_utils.ensure_custom_attributes(camera_node)
         lights = get_all_lights()
         
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"  Found {len(lights)} lights in scene.\n")
-
         handles = rt.Array()
         states = rt.Array()
         for lgt in lights:
             try:
-                h = rt.GetHandleByAnim(lgt)
+                h = _get_node_handle(lgt)
                 s = _get_light_enabled(lgt)
                 rt.append(handles, h)
                 rt.append(states, s)
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(f"    Light: {lgt.name}, Handle: {h}, Enabled: {s}\n")
-            except Exception as lgt_err:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(f"    Error reading light {getattr(lgt, 'name', 'N/A')}: {lgt_err}\n")
+            except Exception:
                 continue
 
         # Write to CA
-        try:
-            if hasattr(camera_node, "cameraLightPresets"):
-                camera_node.cameraLightPresets.lightHandles = handles
-                camera_node.cameraLightPresets.lightStates = states
-                camera_node.cameraLightPresets.hasPhysicalPreset = True
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write("  Saved via camera_node.cameraLightPresets block.\n")
-            else:
-                camera_node.lightHandles = handles
-                camera_node.lightStates = states
-                camera_node.hasPhysicalPreset = True
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write("  Saved via direct camera_node properties.\n")
-        except Exception as write_err:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"  Error writing to Custom Attributes: {write_err}\n")
-                traceback.print_exc(file=f)
-            raise write_err
-            
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write("--- save_light_preset end success ---\n\n")
-            
-    except Exception as e:
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"=== save_light_preset failed ===: {e}\n")
-                traceback.print_exc(file=f)
-        except:
-            pass
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        if ca is not None:
+            ca.lightHandles = handles
+            ca.lightStates = states
+            ca.hasPhysicalPreset = True
+    except Exception:
+        pass
 
 
 # ── load ─────────────────────────────────────────────────────────────────────
 
 def load_light_preset(camera_node):
-    """Read ``lightHandles`` / ``lightStates`` from the camera's CA.
-
-    Returns:
-        list[tuple[int, bool]]  – pairs of (handle, enabled_state), or
-        None if no preset is stored.
-    """
+    """Read ``lightHandles`` / ``lightStates`` from the camera's CA."""
     if rt is None or camera_node is None:
         return None
 
-    import traceback
-    log_path = r"C:\Users\RMatv\AppData\Local\Autodesk\3dsMax\2026 - 64bit\ENU\scripts\Focus\debug_log.txt"
     try:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"--- load_light_preset start for {getattr(camera_node, 'name', 'N/A')} ---\n")
-            
-        if not has_light_preset(camera_node):
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write("  has_light_preset returned False.\n")
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        if ca is None or not ca.hasPhysicalPreset:
             return None
 
-        handles = None
-        states = None
-        
-        try:
-            if hasattr(camera_node, "cameraLightPresets"):
-                handles = camera_node.cameraLightPresets.lightHandles
-                states = camera_node.cameraLightPresets.lightStates
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write("  Read via camera_node.cameraLightPresets block.\n")
-            else:
-                handles = camera_node.lightHandles
-                states = camera_node.lightStates
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write("  Read via direct camera_node properties.\n")
-        except Exception as read_err:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"  Error reading from Custom Attributes: {read_err}\n")
-                traceback.print_exc(file=f)
-            return None
-
+        handles = ca.lightHandles
+        states = ca.lightStates
         if handles is None or states is None:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write("  handles or states is None.\n")
             return None
 
-        # Convert pymxs array to python list to avoid index base issues
-        try:
-            py_handles = list(handles)
-            py_states = list(states)
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"  Converted to python lists. Length: {len(py_handles)}\n")
-        except Exception as conv_err:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"  Failed to convert to python lists: {conv_err}\n")
-                traceback.print_exc(file=f)
-            py_handles = None
-            py_states = None
-
+        py_handles = list(handles)
+        py_states = list(states)
+        
         result = []
-        if py_handles is not None and py_states is not None:
-            for h, s in zip(py_handles, py_states):
-                result.append((int(h), bool(s)))
-        else:
-            try:
-                count = int(handles.count)
-            except Exception:
-                try: count = len(handles)
-                except Exception: count = 0
-            
-            for i in range(1, count + 1):
-                try:
-                    h = handles[i]
-                    s = states[i]
-                    result.append((int(h), bool(s)))
-                except Exception:
-                    try:
-                        h = handles[i-1]
-                        s = states[i-1]
-                        result.append((int(h), bool(s)))
-                    except Exception:
-                        continue
-
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"  Loaded preset with {len(result)} lights.\n")
-            f.write("--- load_light_preset end success ---\n\n")
+        for h, s in zip(py_handles, py_states):
+            result.append((int(h), bool(s)))
             
         return result if result else None
-        
-    except Exception as e:
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"=== load_light_preset failed ===: {e}\n")
-                traceback.print_exc(file=f)
-        except:
-            pass
+    except Exception:
         return None
 
 
 # ── apply ────────────────────────────────────────────────────────────────────
 
 def apply_light_preset(camera_node):
-    """Apply a previously saved light preset.
-
-    For each stored handle, find the light via ``rt.GetAnimByHandle`` and
-    restore its enabled state.  Handles pointing to deleted nodes are silently
-    skipped.  Lights that exist in the scene but are NOT in the preset are left
-    untouched (Variant A).
-    """
-    import traceback
-    log_path = r"C:\Users\RMatv\AppData\Local\Autodesk\3dsMax\2026 - 64bit\ENU\scripts\Focus\debug_log.txt"
+    """Apply a previously saved light preset."""
+    if rt is None or camera_node is None:
+        return
+        
     try:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"--- apply_light_preset start for {getattr(camera_node, 'name', 'N/A')} ---\n")
-            
         preset = load_light_preset(camera_node)
         if preset is None:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write("  No preset loaded (preset is None).\n")
             return
 
         for handle, state in preset:
             try:
-                node = rt.GetAnimByHandle(handle)
-                if node is None:
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(f"    Handle {handle}: Node is None.\n")
+                node = _get_node_by_handle(handle)
+                if node is None or not rt.isValidNode(node):
                     continue
-                if not rt.isValidNode(node):
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(f"    Handle {handle} ({node}): Node is invalid/deleted.\n")
-                    continue
-                
-                prev_state = _get_light_enabled(node)
                 _set_light_enabled(node, state)
-                new_state = _get_light_enabled(node)
-                
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(f"    Light: {node.name}, Handle: {handle}, State change: {prev_state} -> {new_state} (target: {state})\n")
-            except Exception as app_err:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(f"    Error applying light for handle {handle}: {app_err}\n")
+            except Exception:
                 continue
-                
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write("--- apply_light_preset end ---\n\n")
-            
-    except Exception as e:
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"=== apply_light_preset failed ===: {e}\n")
-                traceback.print_exc(file=f)
-        except:
-            pass
+    except Exception:
+        pass
 
 
 # ── query / clear ────────────────────────────────────────────────────────────
@@ -322,9 +207,8 @@ def has_light_preset(camera_node):
     if rt is None or camera_node is None:
         return False
     try:
-        if hasattr(camera_node, "cameraLightPresets"):
-            return bool(camera_node.cameraLightPresets.hasPhysicalPreset)
-        return bool(camera_node.hasPhysicalPreset)
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        return bool(ca.hasPhysicalPreset) if ca is not None else False
     except Exception:
         return False
 
@@ -334,9 +218,11 @@ def clear_light_preset(camera_node):
     if rt is None or camera_node is None:
         return
     try:
-        camera_node.lightHandles = rt.Array()
-        camera_node.lightStates = rt.Array()
-        camera_node.hasPhysicalPreset = False
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        if ca is not None:
+            ca.lightHandles = rt.Array()
+            ca.lightStates = rt.Array()
+            ca.hasPhysicalPreset = False
     except Exception:
         pass
 
@@ -371,15 +257,6 @@ def detect_renderer():
 def _save_corona_lightmix(camera_node):
     """Read Corona LightMix data via the CoronaFp interface and store it
     in the camera CA arrays.
-
-    Corona stores LightMix channels through the ``CoronaRenderer.CoronaFp``
-    scripted interface which exposes:
-      - ``LightMix_GetChannelCount()``
-      - ``LightMix_GetChannelName(i)``
-      - ``LightMix_GetChannelIntensity(i)``
-      - ``LightMix_GetChannelColor(i)``
-      - ``LightMix_GetChannelEnabled(i)``
-    Channels are 0-indexed.
     """
     try:
         count = int(rt.execute("(CoronaRenderer.CoronaFp).LightMix_GetChannelCount()"))
@@ -388,9 +265,7 @@ def _save_corona_lightmix(camera_node):
 
     names = rt.Array()
     intensities = rt.Array()
-    colors_r = rt.Array()
-    colors_g = rt.Array()
-    colors_b = rt.Array()
+    colors = rt.Array()
     enabled_states = rt.Array()
 
     for i in range(count):
@@ -410,38 +285,38 @@ def _save_corona_lightmix(camera_node):
 
             rt.append(names, str(name) if name else "")
             rt.append(intensities, float(intensity) if intensity is not None else 1.0)
-            # Store colour components separately (MAXScript Point3 or Color)
-            rt.append(colors_r, float(color.r) if color else 255.0)
-            rt.append(colors_g, float(color.g) if color else 255.0)
-            rt.append(colors_b, float(color.b) if color else 255.0)
+            
+            c_val = rt.Color(float(color.r), float(color.g), float(color.b)) if color else rt.Color(255, 255, 255)
+            rt.append(colors, c_val)
             rt.append(enabled_states, bool(enabled))
         except Exception:
             continue
 
     try:
-        camera_node.lmixNames = names
-        camera_node.lmixIntensities = intensities
-        camera_node.lmixColorsR = colors_r
-        camera_node.lmixColorsG = colors_g
-        camera_node.lmixColorsB = colors_b
-        camera_node.lmixEnabled = enabled_states
-        camera_node.lmixRenderer = "corona"
-        camera_node.hasMixPreset = True
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        if ca is not None:
+            ca.lmChannels = names
+            ca.lmIntensities = intensities
+            ca.lmColors = colors
+            ca.lmStates = enabled_states
+            ca.hasMixPreset = True
+            return True
     except Exception:
-        return False
-
-    return True
+        pass
+    return False
 
 
 def _apply_corona_lightmix(camera_node):
     """Restore Corona LightMix channels from the camera's CA."""
     try:
-        names = camera_node.lmixNames
-        intensities = camera_node.lmixIntensities
-        colors_r = camera_node.lmixColorsR
-        colors_g = camera_node.lmixColorsG
-        colors_b = camera_node.lmixColorsB
-        enabled_states = camera_node.lmixEnabled
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        if ca is None or not ca.hasMixPreset:
+            return False
+            
+        names = ca.lmChannels
+        intensities = ca.lmIntensities
+        colors = ca.lmColors
+        enabled_states = ca.lmStates
     except Exception:
         return False
 
@@ -455,9 +330,10 @@ def _apply_corona_lightmix(camera_node):
         ch_idx = i       # CoronaFp uses 0-indexed channels
         try:
             intensity_val = float(intensities[idx_mx])
-            cr = float(colors_r[idx_mx])
-            cg = float(colors_g[idx_mx])
-            cb = float(colors_b[idx_mx])
+            c = colors[idx_mx]
+            cr = float(c.r)
+            cg = float(c.g)
+            cb = float(c.b)
             en = bool(enabled_states[idx_mx])
 
             rt.execute(
@@ -483,10 +359,6 @@ def _apply_corona_lightmix(camera_node):
 def _save_vray_lightmix(camera_node):
     """Read V-Ray LightMix data from ``renderers.current`` properties and
     store it in the camera CA.
-
-    V-Ray exposes LightMix through properties on the active V-Ray renderer:
-      - ``colorMap_lightmixIntensities``  – array of float intensities
-      - ``colorMap_lightmixColors``       – array of Color values
     """
     try:
         renderer = rt.renderers.current
@@ -495,11 +367,8 @@ def _save_vray_lightmix(camera_node):
     except Exception:
         return False
 
-    # Copy into fresh MAXScript arrays so they are independent of the renderer
     intensities = rt.Array()
-    colors_r = rt.Array()
-    colors_g = rt.Array()
-    colors_b = rt.Array()
+    colors = rt.Array()
 
     if intensities_src is not None:
         count = int(intensities_src.count) if hasattr(intensities_src, "count") else 0
@@ -514,40 +383,38 @@ def _save_vray_lightmix(camera_node):
         for i in range(1, count + 1):
             try:
                 c = colors_src[i]
-                rt.append(colors_r, float(c.r))
-                rt.append(colors_g, float(c.g))
-                rt.append(colors_b, float(c.b))
+                c_val = rt.Color(float(c.r), float(c.g), float(c.b))
+                rt.append(colors, c_val)
             except Exception:
-                rt.append(colors_r, 255.0)
-                rt.append(colors_g, 255.0)
-                rt.append(colors_b, 255.0)
+                rt.append(colors, rt.Color(255, 255, 255))
 
     try:
-        camera_node.lmixNames = rt.Array()  # V-Ray has no channel names
-        camera_node.lmixIntensities = intensities
-        camera_node.lmixColorsR = colors_r
-        camera_node.lmixColorsG = colors_g
-        camera_node.lmixColorsB = colors_b
-        camera_node.lmixEnabled = rt.Array()  # V-Ray has no per-channel enable
-        camera_node.lmixRenderer = "vray"
-        camera_node.hasMixPreset = True
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        if ca is not None:
+            ca.lmChannels = rt.Array()  # V-Ray has no channel names
+            ca.lmIntensities = intensities
+            ca.lmColors = colors
+            ca.lmStates = rt.Array()  # V-Ray has no per-channel enable
+            ca.hasMixPreset = True
+            return True
     except Exception:
-        return False
-
-    return True
+        pass
+    return False
 
 
 def _apply_vray_lightmix(camera_node):
     """Restore V-Ray LightMix values from the camera's CA back to the renderer."""
     try:
-        intensities = camera_node.lmixIntensities
-        colors_r = camera_node.lmixColorsR
-        colors_g = camera_node.lmixColorsG
-        colors_b = camera_node.lmixColorsB
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        if ca is None or not ca.hasMixPreset:
+            return False
+            
+        intensities = ca.lmIntensities
+        colors = ca.lmColors
     except Exception:
         return False
 
-    if intensities is None:
+    if intensities is None or colors is None:
         return False
 
     try:
@@ -555,7 +422,6 @@ def _apply_vray_lightmix(camera_node):
     except Exception:
         return False
 
-    # Rebuild the MAXScript arrays expected by V-Ray
     int_arr = rt.Array()
     col_arr = rt.Array()
     int_count = int(intensities.count) if hasattr(intensities, "count") else 0
@@ -565,30 +431,27 @@ def _apply_vray_lightmix(camera_node):
         except Exception:
             rt.append(int_arr, 1.0)
 
-    cr_count = int(colors_r.count) if hasattr(colors_r, "count") else 0
-    for i in range(1, cr_count + 1):
+    col_count = int(colors.count) if hasattr(colors, "count") else 0
+    for i in range(1, col_count + 1):
         try:
-            c = rt.Color(float(colors_r[i]), float(colors_g[i]), float(colors_b[i]))
-            rt.append(col_arr, c)
+            c = colors[i]
+            c_val = rt.Color(float(c.r), float(c.g), float(c.b))
+            rt.append(col_arr, c_val)
         except Exception:
             rt.append(col_arr, rt.Color(255, 255, 255))
 
     try:
         renderer.colorMap_lightmixIntensities = int_arr
         renderer.colorMap_lightmixColors = col_arr
+        return True
     except Exception:
         return False
-
-    return True
 
 
 # ── Public LightMix API ─────────────────────────────────────────────────────
 
 def save_lightmix_preset(camera_node):
-    """Snapshot the current LightMix state and store it in the camera's CA.
-
-    Automatically detects the active renderer (Corona / V-Ray).
-    """
+    """Snapshot the current LightMix state and store it in the camera's CA."""
     if rt is None or camera_node is None:
         return
 
@@ -602,27 +465,25 @@ def save_lightmix_preset(camera_node):
 
 
 def apply_lightmix_preset(camera_node):
-    """Restore a previously saved LightMix preset to the active renderer.
-
-    The preset records which renderer was used when saving; if the current
-    renderer differs from the stored one, the operation is skipped.
-    """
+    """Restore a previously saved LightMix preset to the active renderer."""
     if rt is None or camera_node is None:
         return
     if not has_lightmix_preset(camera_node):
         return
 
-    try:
-        stored_renderer = str(camera_node.lmixRenderer).lower()
-    except Exception:
-        stored_renderer = ""
-
     current = detect_renderer()
+    
+    try:
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        if ca is None:
+            return
+        is_corona_preset = int(ca.lmChannels.count) > 0
+    except Exception:
+        is_corona_preset = False
 
-    # Only apply if the renderer matches
-    if stored_renderer == "corona" and current == "corona":
+    if is_corona_preset and current == "corona":
         _apply_corona_lightmix(camera_node)
-    elif stored_renderer == "vray" and current == "vray":
+    elif not is_corona_preset and current == "vray":
         _apply_vray_lightmix(camera_node)
 
 
@@ -631,7 +492,8 @@ def has_lightmix_preset(camera_node):
     if rt is None or camera_node is None:
         return False
     try:
-        return bool(camera_node.hasMixPreset)
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        return bool(ca.hasMixPreset) if ca is not None else False
     except Exception:
         return False
 
@@ -641,14 +503,13 @@ def clear_lightmix_preset(camera_node):
     if rt is None or camera_node is None:
         return
     try:
-        camera_node.lmixNames = rt.Array()
-        camera_node.lmixIntensities = rt.Array()
-        camera_node.lmixColorsR = rt.Array()
-        camera_node.lmixColorsG = rt.Array()
-        camera_node.lmixColorsB = rt.Array()
-        camera_node.lmixEnabled = rt.Array()
-        camera_node.lmixRenderer = ""
-        camera_node.hasMixPreset = False
+        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
+        if ca is not None:
+            ca.lmChannels = rt.Array()
+            ca.lmIntensities = rt.Array()
+            ca.lmColors = rt.Array()
+            ca.lmStates = rt.Array()
+            ca.hasMixPreset = False
     except Exception:
         pass
 
@@ -656,14 +517,7 @@ def clear_lightmix_preset(camera_node):
 # ── Render-element setup ────────────────────────────────────────────────────
 
 def setup_lightmix_elements():
-    """Ensure that a LightMix render element exists in the scene.
-
-    Creates one if missing.  Supports Corona (``CShading_LightMix``) and
-    V-Ray (``VRayLightMix``).
-
-    Returns:
-        bool – True if the element already existed or was created successfully.
-    """
+    """Ensure that a LightMix render element exists in the scene."""
     if rt is None:
         return False
 
@@ -677,24 +531,17 @@ def setup_lightmix_elements():
 
 
 def _ensure_render_element(class_name):
-    """Check whether a render element of *class_name* exists; create it if not.
-
-    Uses ``rt.maxOps.GetCurRenderElementMgr()`` to query and add elements.
-    """
+    """Check whether a render element of *class_name* exists; create it if not."""
     try:
         mgr = rt.maxOps.GetCurRenderElementMgr()
         num_elements = mgr.NumRenderElements()
-
-        target_class = rt.execute(class_name)
-        # target_class is the MAXScript class value; we'll compare class names
 
         for i in range(num_elements):
             elem = mgr.GetRenderElement(i)
             elem_class_name = str(rt.classOf(elem))
             if elem_class_name.lower() == class_name.lower():
-                return True  # Already exists
+                return True
 
-        # Create and add the element
         new_elem = rt.execute("{cls}()".format(cls=class_name))
         if new_elem is not None:
             mgr.AddRenderElement(new_elem)
