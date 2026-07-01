@@ -254,6 +254,22 @@ def detect_renderer():
 
 # ── Corona helpers ───────────────────────────────────────────────────────────
 
+def _find_render_element_global_index(element_name):
+    """Find the 0-based index of a render element in the Render Setup list."""
+    if rt is None:
+        return -1
+    try:
+        mgr = rt.maxOps.GetCurRenderElementMgr()
+        num_elements = mgr.NumRenderElements()
+        for i in range(num_elements):
+            elem = mgr.GetRenderElement(i)
+            if elem.elementName == element_name:
+                return i
+    except Exception:
+        pass
+    return -1
+
+
 def _ensure_corona_camera_lightmix_element(camera_node):
     """Ensure a CShading_LightMix element named LMix_<CameraName> exists in the scene."""
     if rt is None or camera_node is None:
@@ -443,7 +459,27 @@ def _apply_corona_lightmix(camera_node):
         except Exception:
             continue
 
+    # Determine the channel index in the VFB (Render Setup index + 2)
+    # 0 is Beauty, 1 is Alpha, render elements start at 2.
+    vfb_chan = 2  # Default fallback
     try:
+        global_idx = _find_render_element_global_index("LMix_{}".format(camera_node.name))
+        if global_idx != -1:
+            vfb_chan = global_idx + 2
+    except Exception:
+        pass
+
+    try:
+        # Switch the VFB displayed render element/channel (this switches VFB dropdown and display)
+        rt.execute(
+            "(CoronaRenderer.CoronaFp).setDisplayedChannel {vfb_chan}"
+            .format(vfb_chan=vfb_chan)
+        )
+    except Exception:
+        pass
+
+    try:
+        # Also switch the active LightMix channel in the VFB tab (backup/sync)
         rt.execute(
             "(CoronaRenderer.CoronaFp).setDisplayedLightMixChannel {apply_idx}"
             .format(apply_idx=apply_idx)
