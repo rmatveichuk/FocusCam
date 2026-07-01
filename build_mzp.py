@@ -40,16 +40,7 @@ iconName:"Icon"
     pre_install_content = """(
     -- Закрываем старое Python-окно и очищаем старый callback, если они активны
     try (
-        python.execute "from PySide6.QtWidgets import QApplication
-widgets = QApplication.allWidgets()
-for w in widgets:
-    try:
-        if w.__class__.__name__ == 'FocusManagerWindow' or w.objectName() == 'FocusDockWidget':
-            w.close()
-            w.deleteLater()
-    except:
-        pass
-QApplication.processEvents()"
+        python.execute "from PySide6.QtWidgets import QApplication; [w.close() or w.deleteLater() for w in QApplication.allWidgets() if w.__class__.__name__ == 'FocusManagerWindow' or w.objectName() == 'FocusDockWidget']; QApplication.processEvents()"
     ) catch ()
     try ( unregisterRedrawViewsCallback focusOverlayRedrawCB ) catch ()
     

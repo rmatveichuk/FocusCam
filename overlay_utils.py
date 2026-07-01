@@ -49,69 +49,81 @@ PHI_INV: float = 1.0 / PHI                   # ≈ 0.6180339887
 LineSegment = Tuple[int, int, int, int]
 
 
-def calc_thirds(width: int, height: int) -> List[LineSegment]:
-    """Return 4 line segments dividing the viewport into a 3×3 grid.
+def get_safe_frame_rect(
+    vp_width: int,
+    vp_height: int,
+    render_width: int,
+    render_height: int,
+) -> Tuple[int, int, int, int]:
+    """Calculate the safe frame bounding box (x_offset, y_offset, width, height) in viewport pixels."""
+    if vp_height <= 0 or render_height <= 0:
+        return 0, 0, vp_width, vp_height
 
-    Two vertical and two horizontal lines placed at 1/3 and 2/3 of each axis.
-    """
-    x1 = int(round(width / 3.0))
-    x2 = int(round(2.0 * width / 3.0))
-    y1 = int(round(height / 3.0))
-    y2 = int(round(2.0 * height / 3.0))
+    view_aspect = float(vp_width) / float(vp_height)
+    render_aspect = float(render_width) / float(render_height)
+
+    if render_aspect > view_aspect:
+        # Safe frame is limited by width (horizontal bars)
+        w = vp_width
+        h = int(round(vp_width / render_aspect))
+        x = 0
+        y = int(round((vp_height - h) / 2.0))
+    else:
+        # Safe frame is limited by height (vertical bars)
+        w = int(round(vp_height * render_aspect))
+        h = vp_height
+        x = int(round((vp_width - w) / 2.0))
+        y = 0
+
+    return x, y, w, h
+
+
+def calc_thirds(x: int, y: int, w: int, h: int) -> List[LineSegment]:
+    """Return 4 line segments dividing the Safe Frame into a 3×3 grid."""
+    x1 = x + int(round(w / 3.0))
+    x2 = x + int(round(2.0 * w / 3.0))
+    y1 = y + int(round(h / 3.0))
+    y2 = y + int(round(2.0 * h / 3.0))
 
     return [
         # Vertical lines
-        (x1, 0, x1, height),
-        (x2, 0, x2, height),
+        (x1, y, x1, y + h),
+        (x2, y, x2, y + h),
         # Horizontal lines
-        (0, y1, width, y1),
-        (0, y2, width, y2),
+        (x, y1, x + w, y1),
+        (x, y2, x + w, y2),
     ]
 
 
-def calc_golden_ratio(width: int, height: int) -> List[LineSegment]:
-    """Return 4 line segments at golden-ratio (phi ≈ 0.618) positions.
+def calc_golden_ratio(x: int, y: int, w: int, h: int) -> List[LineSegment]:
+    """Return 4 line segments at golden-ratio (phi ≈ 0.618) positions inside the Safe Frame."""
+    gx = int(round(w * PHI_INV))
+    gy = int(round(h * PHI_INV))
+    gx2 = w - gx
+    gy2 = h - gy
 
-    Two vertical and two horizontal lines placed symmetrically so that the
-    smaller partition is phi (~61.8 %) of the larger one.
-    """
-    # Distance from left / top edge to the nearer golden line
-    gx = int(round(width * PHI_INV))
-    gy = int(round(height * PHI_INV))
-    # Mirror positions
-    gx2 = width - gx
-    gy2 = height - gy
+    mx1 = x + min(gx, gx2)
+    mx2 = x + max(gx, gx2)
+    my1 = y + min(gy, gy2)
+    my2 = y + max(gy, gy2)
 
     return [
-        # Vertical lines (ensure smaller value first for consistency)
-        (min(gx, gx2), 0, min(gx, gx2), height),
-        (max(gx, gx2), 0, max(gx, gx2), height),
+        # Vertical lines
+        (mx1, y, mx1, y + h),
+        (mx2, y, mx2, y + h),
         # Horizontal lines
-        (0, min(gy, gy2), width, min(gy, gy2)),
-        (0, max(gy, gy2), width, max(gy, gy2)),
+        (x, my1, x + w, my1),
+        (x, my2, x + w, my2),
     ]
 
 
-def calc_diagonals(width: int, height: int) -> List[LineSegment]:
-    """Return 4 diagonal line segments from corners through golden-ratio points.
-
-    Each diagonal starts at a corner and passes through the nearest
-    golden-ratio intersection point, ending at the opposite edge.
-    """
-    gx1 = int(round(width * (1.0 - PHI_INV)))
-    gx2 = int(round(width * PHI_INV))
-    gy1 = int(round(height * (1.0 - PHI_INV)))
-    gy2 = int(round(height * PHI_INV))
-
+def calc_diagonals(x: int, y: int, w: int, h: int) -> List[LineSegment]:
+    """Return diagonal line segments from corners of the Safe Frame."""
     return [
-        # Top-left corner → bottom-right direction through golden point
-        (0, 0, width, height),
-        # Top-right corner → bottom-left direction through golden point
-        (width, 0, 0, height),
-        # Bottom-left → diagonal toward golden intersection (top-right region)
-        (0, height, gx2, 0),
-        # Top-left → diagonal toward golden intersection (bottom-right region)
-        (0, 0, gx2, height),
+        # Top-left corner → bottom-right
+        (x, y, x + w, y + h),
+        # Top-right corner → bottom-left
+        (x + w, y, x, y + h),
     ]
 
 
@@ -122,83 +134,54 @@ def calc_spiral(
     max_iterations: int = 9,
 ) -> List[Tuple[int, int]]:
     """Return polyline points approximating a Fibonacci / golden spiral.
-
-    The spiral is constructed from successive quarter-circle arcs inside
-    shrinking golden rectangles.  Each arc is tessellated into
-    *num_arc_segments* small line segments for smooth rendering.
-
-    Parameters
-    ----------
-    width, height:
-        Viewport dimensions in pixels.
-    num_arc_segments:
-        Number of straight segments used to approximate each 90° arc.
-    max_iterations:
-        How many quarter-turn arcs to compute (more = tighter spiral).
-
-    Returns
-    -------
-    A flat list of (x, y) integer tuples forming a continuous polyline.
+    Kept for backward compatibility.
     """
     points: List[Tuple[int, int]] = []
-
-    # Working rectangle (floating-point for precision)
     rx: float = 0.0
     ry: float = 0.0
     rw: float = float(width)
     rh: float = float(height)
 
     for i in range(max_iterations):
-        # Determine the arc center and radius based on which quadrant we are
-        # subdividing.  The sequence cycles through four orientations.
         quadrant = i % 4
-
         if quadrant == 0:
-            # Arc from bottom-left to top-right of the square on the right
             sq = rw - rw / PHI
             cx = rx + rw - sq
             cy = ry + rh
             start_angle = -math.pi / 2.0
             radius = rh
         elif quadrant == 1:
-            # Arc at bottom of rectangle
             sq = rh - rh / PHI
             cx = rx
             cy = ry + rh - sq
             start_angle = 0.0
             radius = rw
         elif quadrant == 2:
-            # Arc at left of rectangle
             sq = rw - rw / PHI
             cx = rx + sq
             cy = ry
             start_angle = math.pi / 2.0
             radius = rh
         else:
-            # Arc at top of rectangle
             sq = rh - rh / PHI
             cx = rx + rw
             cy = ry + sq
             start_angle = math.pi
             radius = rw
 
-        # Generate the arc points for this quarter turn
         for j in range(num_arc_segments + 1):
-            # Sweep 90° (pi/2) per iteration
             t = j / float(num_arc_segments)
             angle = start_angle + t * (math.pi / 2.0)
             px = int(round(cx + radius * math.cos(angle)))
             py = int(round(cy + radius * math.sin(angle)))
             points.append((px, py))
 
-        # Shrink the working rectangle for the next iteration
         if quadrant == 0:
             rw -= sq
-            rx += sq  # not needed visually but keeps rect correct
-            # Actually: subdivide by removing the right square
+            rx += sq
             new_w = rw * PHI_INV
-            rx = rx  # left edge stays
-            rw = rw  # will be recalculated below
+            rx = rx
+            rw = rw
         elif quadrant == 1:
             new_h = rh * PHI_INV
         elif quadrant == 2:
@@ -206,116 +189,124 @@ def calc_spiral(
         else:
             new_h = rh * PHI_INV
 
-        # Simpler recursive subdivision: shrink the rectangle by phi each step
         if quadrant == 0:
             new_rw = rw
-            rw = rw  # keep width, reduce height
+            rw = rw
             rh = rh / PHI
-            ry = ry + (rh * PHI_INV)  # shift down
+            ry = ry + (rh * PHI_INV)
         elif quadrant == 1:
             rw = rw / PHI
-            # rx stays
         elif quadrant == 2:
             rh = rh / PHI
-        else:
-            old_rw = rw
-            rw = rw / PHI
-            rx = rx + old_rw - rw
-
-    return points
-
-
 def _calc_spiral_golden_rects(
-    width: int,
-    height: int,
-    num_arc_segments: int = 32,
-    num_quarter_turns: int = 8,
-) -> List[Tuple[int, int]]:
-    """Compute a golden-spiral polyline via successive golden-rectangle subdivision.
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    num_arc_segments: int = 128,
+) -> Tuple[List[List[Tuple[int, int]]], List[List[Tuple[int, int]]]]:
+    """Compute the subdivision rectangles and the independent spiral arc segments inside the Safe Frame."""
+    is_portrait = w < h
+    if is_portrait:
+        calc_w, calc_h = h, w
+    else:
+        calc_w, calc_h = w, h
 
-    This is a cleaner implementation that carefully tracks the shrinking
-    rectangles and draws quarter-circle arcs whose radius equals the shorter
-    side of the current golden rectangle.
+    # Fit golden rectangle
+    rect_h = float(calc_h)
+    rect_w = rect_h * PHI
+    if rect_w > calc_w:
+        rect_w = float(calc_w)
+        rect_h = rect_w / PHI
 
-    Returns a list of (x, y) pixel coordinate tuples.
-    """
-    points: List[Tuple[int, int]] = []
+    rect_x = (float(calc_w) - rect_w) / 2.0
+    rect_y = (float(calc_h) - rect_h) / 2.0
 
-    # Ensure we work in landscape orientation for the initial rectangle.
-    # The golden rectangle has aspect ratio phi:1.
-    # We scale the spiral to fill the viewport as much as possible.
-    rect_x: float = 0.0
-    rect_y: float = 0.0
-    rect_w: float = float(width)
-    rect_h: float = float(height)
+    # 1. Generate nested rectangles (Mode 0 clockwise starting from bottom-left)
+    # 0: bottom-left, 1: top-left, 2: top-right, 3: bottom-right
+    r1 = [
+        (rect_x, rect_y + rect_h),
+        (rect_x, rect_y),
+        (rect_x + rect_w, rect_y),
+        (rect_x + rect_w, rect_y + rect_h)
+    ]
+    rects = [r1]
 
-    for turn in range(num_quarter_turns):
-        orientation = turn % 4
-        # The "square" side is the shorter dimension of the current rect
-        # In a perfect golden rectangle the ratio is phi, but the viewport
-        # may not be exactly phi, so we just take min(rect_w, rect_h) for
-        # the first cut then use the golden ratio for subsequent ones.
+    curr = list(r1)
+    # 12 divisions for high precision subdivision grid
+    for _ in range(12):
+        A, B, C, D = curr[0], curr[1], curr[2], curr[3]
+        
+        eX = B[0] + PHI_INV * (C[0] - B[0])
+        eY = B[1] + PHI_INV * (C[1] - B[1])
+        E = (eX, eY)
+        
+        fX = A[0] + PHI_INV * (D[0] - A[0])
+        fY = A[1] + PHI_INV * (D[1] - A[1])
+        F = (fX, fY)
+        
+        new_rect = [E, C, D, F]
+        rects.append(new_rect)
+        curr = new_rect
 
-        if orientation == 0:
-            # Square on the RIGHT side, arc sweeps from bottom to top
-            sq = rect_w / PHI if rect_w > rect_h else rect_h
-            sq = min(rect_w, rect_h) if turn == 0 else rect_w - rect_w / PHI
-            sq = rect_h  # square side = height
-            # Arc center: bottom-right of the square
-            cx = rect_x + rect_w
-            cy = rect_y + rect_h
-            start_angle = math.pi          # 180°
-            end_angle = 3.0 * math.pi / 2.0  # 270°
-            radius = sq
-            # After this, remove the right square
-            rect_x = rect_x
-            rect_w = rect_w - sq
+    # 2. Generate curve arcs (each arc is an independent list of points)
+    curve_arcs = []
+    circle_start = 180.0
+    
+    # Each arc segment has high density for smooth curves
+    steps_per_arc = max(8, int(num_arc_segments / 8))
+    
+    for k in range(1, len(rects)):
+        prev_r = rects[k-1]
+        r = rects[k]
+        
+        radius = math.dist(prev_r[0], prev_r[1])
+        center = r[3]
+        
+        arc_points = []
+        for i in range(steps_per_arc + 1):
+            deg = circle_start + (90.0 * i / float(steps_per_arc))
+            rad = math.radians(deg)
+            px = center[0] + radius * math.sin(rad)
+            py = center[1] + radius * math.cos(rad)
+            arc_points.append((px, py))
+        curve_arcs.append(arc_points)
+            
+        circle_start -= 90.0
+        if circle_start <= 0.0:
+            circle_start += 360.0
 
-        elif orientation == 1:
-            # Square on the BOTTOM, arc sweeps from right to left
-            sq = rect_w  # square side = width of remaining rect
-            cx = rect_x
-            cy = rect_y + rect_h
-            start_angle = 3.0 * math.pi / 2.0  # 270°
-            end_angle = 2.0 * math.pi           # 360°
-            radius = sq
-            rect_h = rect_h - sq
+    # 3. Map/transpose back to viewport coordinates and flip Y-axis (since Max gw has Y=0 at the bottom)
+    final_rects = []
+    for r in rects:
+        tr = []
+        for p in r:
+            flipped_y = rect_y + (rect_y + rect_h - p[1])
+            if is_portrait:
+                screen_x = int(round(float(x) + flipped_y))
+                screen_y = int(round(float(y) + p[0]))
+            else:
+                screen_x = int(round(float(x) + p[0]))
+                screen_y = int(round(float(y) + flipped_y))
+            tr.append((screen_x, screen_y))
+        final_rects.append(tr)
 
-        elif orientation == 2:
-            # Square on the LEFT side, arc sweeps from top to bottom
-            sq = rect_h
-            cx = rect_x
-            cy = rect_y
-            start_angle = 0.0
-            end_angle = math.pi / 2.0
-            radius = sq
-            rect_x = rect_x + sq
-            rect_w = rect_w - sq
+    final_arcs = []
+    for arc in curve_arcs:
+        final_arc = []
+        for p in arc:
+            flipped_y = rect_y + (rect_y + rect_h - p[1])
+            if is_portrait:
+                screen_x = int(round(float(x) + flipped_y))
+                screen_y = int(round(float(y) + p[0]))
+            else:
+                screen_x = int(round(float(x) + p[0]))
+                screen_y = int(round(float(y) + flipped_y))
+            final_arc.append((screen_x, screen_y))
+        final_arcs.append(final_arc)
 
-        else:
-            # Square on the TOP, arc sweeps from left to right
-            sq = rect_w
-            cx = rect_x + rect_w
-            cy = rect_y
-            start_angle = math.pi / 2.0
-            end_angle = math.pi
-            radius = sq
-            rect_y = rect_y + sq
-            rect_h = rect_h - sq
+    return final_rects, final_arcs
 
-        # Guard against degenerate rectangles
-        if radius <= 1.0:
-            break
-
-        # Tessellate the quarter-circle arc
-        for j in range(num_arc_segments + 1):
-            t = j / float(num_arc_segments)
-            angle = start_angle + t * (end_angle - start_angle)
-            px = int(round(cx + radius * math.cos(angle)))
-            py = int(round(cy + radius * math.sin(angle)))
-            points.append((px, py))
-
-    return points
 
 
 # ---------------------------------------------------------------------------
@@ -391,26 +382,15 @@ class OverlayManager:
         global _global_manager
         _global_manager = self
 
-        # Always try to unregister any existing callback with this name first
-        try:
-            rt.execute("try(unregisterRedrawViewsCallback {})catch()".format(self._callback_name))
-        except Exception:
-            pass
-
         # Build the MAXScript callback definition.
-        # We try to import from the 'Focus' package first (when installed),
-        # then fall back to direct import (when running from dev folder).
-        # We use a multi-line python command inside the MAXScript string.
-        # Build the MAXScript callback definition.
-        # We only define the function if it is undefined to prevent losing the function
-        # reference, which would make unregisterRedrawViewsCallback fail.
-        # The wrapper just routes to python, so it never needs to be redefined.
+        # We unregister first to clean up any previous instance, then define
+        # the global function, then register it. This avoids duplicate handlers
+        # and ensures the python execution string is always updated.
         mxs = (
             "global {name}\n"
-            "if {name} == undefined do (\n"
-            "    fn {name} = (\n"
-            "        python.execute \"try:\\n    from Focus.overlay_utils import _redraw_callback_entry\\nexcept ImportError:\\n    from overlay_utils import _redraw_callback_entry\\n_redraw_callback_entry()\"\n"
-            "    )\n"
+            "try(unregisterRedrawViewsCallback {name})catch()\n"
+            "fn {name} = (\n"
+            "    python.execute \"import sys; m = sys.modules.get('Focus.overlay_utils') or sys.modules.get('overlay_utils'); m._redraw_callback_entry() if m else None\"\n"
             ")\n"
             "registerRedrawViewsCallback {name}\n"
         ).format(name=self._callback_name)
@@ -440,12 +420,7 @@ class OverlayManager:
     def draw_overlays(self) -> None:
         """Draw all active overlays on the current viewport.
 
-        Called automatically by the redraw callback.  Performs the following
-        checks before drawing:
-
-        1. ``pymxs`` must be available.
-        2. A target camera must be set.
-        3. The active viewport must be looking through that camera.
+        Called automatically by the redraw callback.
         """
         if rt is None or pymxs is None:
             return
@@ -483,6 +458,17 @@ class OverlayManager:
         if vp_width <= 0 or vp_height <= 0:
             return
 
+        # ---- Retrieve render dimensions to compute Safe Frame -----------
+        try:
+            render_width = int(rt.renderWidth)
+            render_height = int(rt.renderHeight)
+        except Exception:
+            render_width = vp_width
+            render_height = vp_height
+
+        x, y, w, h = get_safe_frame_rect(vp_width, vp_height, render_width, render_height)
+
+
         # ---- Set line drawing colour -------------------------------------
         r, g, b = self.line_color
         try:
@@ -494,17 +480,41 @@ class OverlayManager:
 
         # ---- Draw each active overlay ------------------------------------
         if OVERLAY_THIRDS in self.active_overlays:
-            self._draw_line_segments(calc_thirds(vp_width, vp_height))
+            self._draw_line_segments(calc_thirds(x, y, w, h))
 
         if OVERLAY_GOLDEN in self.active_overlays:
-            self._draw_line_segments(calc_golden_ratio(vp_width, vp_height))
+            self._draw_line_segments(calc_golden_ratio(x, y, w, h))
 
         if OVERLAY_DIAGONALS in self.active_overlays:
-            self._draw_line_segments(calc_diagonals(vp_width, vp_height))
+            self._draw_line_segments(calc_diagonals(x, y, w, h))
 
         if OVERLAY_SPIRAL in self.active_overlays:
-            spiral_pts = _calc_spiral_golden_rects(vp_width, vp_height)
-            self._draw_polyline(spiral_pts)
+            rects, spiral_arcs = _calc_spiral_golden_rects(x, y, w, h)
+            
+            # 1. Draw sub-rectangles in a dimmer color (clr / 2.5)
+            r_dim = int(r / 2.5)
+            g_dim = int(g / 2.5)
+            b_dim = int(b / 2.5)
+            try:
+                rt.execute(
+                    "gw.setColor #line (color {r} {g} {b})".format(r=r_dim, g=g_dim, b=b_dim)
+                )
+            except Exception:
+                pass
+            
+            for r_pts in rects:
+                self._draw_closed_polyline(r_pts)
+                
+            # 2. Restore main color for the spiral curve
+            try:
+                rt.execute(
+                    "gw.setColor #line (color {r} {g} {b})".format(r=r, g=g, b=b)
+                )
+            except Exception:
+                pass
+                
+            for arc in spiral_arcs:
+                self._draw_polyline(arc)
 
         # Flush GW buffer so the lines appear on screen
         try:
@@ -514,6 +524,21 @@ class OverlayManager:
             pass
 
     # -- internal helpers ---------------------------------------------------
+
+    def _draw_closed_polyline(self, points: Sequence[Tuple[int, int]]) -> None:
+        """Draw a closed polyline through *points* via ``gw.hPolyline``."""
+        if rt is None:
+            return
+        if len(points) < 2:
+            return
+        pts_str = ", ".join(
+            "[{x},{y},0]".format(x=px, y=py) for px, py in points
+        )
+        mxs = "gw.hPolyline #({pts}) true".format(pts=pts_str)
+        try:
+            rt.execute(mxs)
+        except Exception:
+            pass
 
     def _draw_line_segments(self, segments: Sequence[LineSegment]) -> None:
         """Draw a batch of independent 2-point line segments via ``gw.hPolyline``.

@@ -126,6 +126,23 @@ class FocusManagerWindow(QDockWidget):
         cameras = camera_utils.get_all_cameras()
         self.ui.populate_cameras(cameras)
         
+        # Auto-select the active viewport camera if any
+        if rt:
+            try:
+                active_cam = rt.viewport.getCamera()
+                if active_cam and camera_utils.is_node_valid(active_cam):
+                    active_handle = rt.getHandleByAnim(active_cam)
+                    matched_cam = None
+                    for c in cameras:
+                        if rt.getHandleByAnim(c) == active_handle:
+                            matched_cam = c
+                            break
+                    if matched_cam:
+                        self.ui.select_camera(matched_cam)
+                        self.overlay_mgr.set_target_camera(matched_cam)
+            except Exception:
+                pass
+        
         # Queue all cameras for deferred thumbnail generation
         self._thumb_queue = list(cameras)
         if self._thumb_queue:
@@ -285,8 +302,8 @@ class FocusManagerWindow(QDockWidget):
                 rt.forceCompleteRedraw()
 
     def _sync_renderer_resolution(self):
-        """Poll 3ds Max Render Setup and update spinboxes and camera CA if they differ."""
-        if not rt or not self.ui.active_camera_node:
+        """Poll 3ds Max Render Setup and active viewport camera, update UI and CA if they differ."""
+        if not rt:
             return
             
         # Skip synchronization if 3ds Max is currently rendering (production or interactive ActiveShade)
@@ -298,6 +315,32 @@ class FocusManagerWindow(QDockWidget):
                 return
         except Exception:
             pass
+
+        # 1. Viewport camera synchronization
+        try:
+            active_vp_camera = rt.viewport.getCamera()
+            if active_vp_camera and camera_utils.is_node_valid(active_vp_camera):
+                vp_handle = rt.getHandleByAnim(active_vp_camera)
+                # Check if UI active camera has a different handle
+                ui_handle = rt.getHandleByAnim(self.ui.active_camera_node) if self.ui.active_camera_node else None
+                if ui_handle != vp_handle:
+                    # Search for the camera in our UI list
+                    matched_cam = None
+                    for i in range(self.ui.cam_list.count()):
+                        item = self.ui.cam_list.item(i)
+                        card = self.ui.cam_list.itemWidget(item)
+                        if card and card.camera_node and rt.getHandleByAnim(card.camera_node) == vp_handle:
+                            matched_cam = card.camera_node
+                            break
+                    if matched_cam:
+                        self.ui.select_camera(matched_cam)
+                        self.overlay_mgr.set_target_camera(matched_cam)
+        except Exception:
+            pass
+
+        # 2. Resolution synchronization
+        if not self.ui.active_camera_node:
+            return
             
         # Do not overwrite if user is actively typing in the spinboxes
         if self.ui.w_spin.hasFocus() or self.ui.h_spin.hasFocus():
