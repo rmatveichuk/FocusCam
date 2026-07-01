@@ -207,18 +207,7 @@ class FocusManagerWindow(QDockWidget):
         # 1. Switch Viewport
         camera_utils.switch_to_camera(camera_node)
         
-        # 2. Update overlays targeting
-        self.overlay_mgr.set_target_camera(camera_node)
-        
-        # 3. Apply Physical Light Preset (if any)
-        if light_utils.has_light_preset(camera_node):
-            light_utils.apply_light_preset(camera_node)
-            
-        # 4. Apply LightMix Preset (if any)
-        if light_utils.has_lightmix_preset(camera_node):
-            light_utils.apply_lightmix_preset(camera_node)
-            
-        # 5. Apply Resolution (if any)
+        # 2. Apply Resolution (if any) - Applied immediately to sync with camera switch
         w, h, has_res = camera_utils.load_resolution(camera_node)
         if has_res:
             camera_utils.apply_resolution(w, h)
@@ -230,6 +219,17 @@ class FocusManagerWindow(QDockWidget):
                 # Update UI spinboxes to reflect the newly saved resolution
                 self.ui.select_camera(camera_node) 
                 
+        # 3. Update overlays targeting
+        self.overlay_mgr.set_target_camera(camera_node)
+        
+        # 4. Apply Physical Light Preset (if any)
+        if light_utils.has_light_preset(camera_node):
+            light_utils.apply_light_preset(camera_node)
+            
+        # 5. Apply LightMix Preset (if any)
+        if light_utils.has_lightmix_preset(camera_node):
+            light_utils.apply_lightmix_preset(camera_node)
+            
         if rt:
             rt.forceCompleteRedraw()
             
