@@ -49,16 +49,24 @@ attributes cameraLightPresets (
         lmColors type:#colorTab tabSizeVariable:true
         lmStates type:#boolTab tabSizeVariable:true
         hasMixPreset type:#boolean default:false
+        sortOrder type:#integer default:0
+    )
+)
+"""
+
+_RES_CA_DEFINITION = """
+attributes focusResolutionPresets (
+    parameters main (
         renderWidth type:#integer default:0
         renderHeight type:#integer default:0
         hasResolution type:#boolean default:false
-        sortOrder type:#integer default:0
     )
 )
 """
 
 # We cache the CA definition object so we don't re-execute every call.
 _ca_def_cache = None
+_res_ca_def_cache = None
 
 
 def _get_ca_def():
@@ -67,6 +75,13 @@ def _get_ca_def():
     if _ca_def_cache is None:
         _ca_def_cache = rt.execute(_CA_DEFINITION)
     return _ca_def_cache
+
+def _get_res_ca_def():
+    """Return the focusResolutionPresets attribute definition, creating it once."""
+    global _res_ca_def_cache
+    if _res_ca_def_cache is None:
+        _res_ca_def_cache = rt.execute(_RES_CA_DEFINITION)
+    return _res_ca_def_cache
 
 
 # ===================================================================
@@ -93,13 +108,27 @@ def _has_ca(camera_node) -> bool:
             ca = rt.custAttributes.get(camera_node, i)
             ca_name = rt.custAttributes.getDef(ca)
             if ca_name is not None:
-                # The definition's .name property holds the attribute block name.
                 if str(getattr(ca_name, "name", "")) == "cameraLightPresets":
                     return True
     except Exception:
         pass
     return False
 
+def _has_res_ca(camera_node) -> bool:
+    """Return True if *camera_node* already carries the focusResolutionPresets CA."""
+    if not is_node_valid(camera_node):
+        return False
+    try:
+        ca_count = rt.custAttributes.count(camera_node)
+        for i in range(1, ca_count + 1):
+            ca = rt.custAttributes.get(camera_node, i)
+            ca_name = rt.custAttributes.getDef(ca)
+            if ca_name is not None:
+                if str(getattr(ca_name, "name", "")) == "focusResolutionPresets":
+                    return True
+    except Exception:
+        pass
+    return False
 
 def ensure_custom_attributes(camera_node) -> None:
     """
@@ -111,6 +140,18 @@ def ensure_custom_attributes(camera_node) -> None:
     if _has_ca(camera_node):
         return
     ca_def = _get_ca_def()
+    rt.custAttributes.add(camera_node, ca_def)
+
+def ensure_res_custom_attributes(camera_node) -> None:
+    """
+    Attach the *focusResolutionPresets* CA block to *camera_node* if it is not
+    already present.
+    """
+    if not is_node_valid(camera_node):
+        return
+    if _has_res_ca(camera_node):
+        return
+    ca_def = _get_res_ca_def()
     rt.custAttributes.add(camera_node, ca_def)
 
 
@@ -296,29 +337,40 @@ def grab_viewport_thumbnail(camera_node, width: int = 200, height: int = 112):
 # ===================================================================
 
 def save_resolution(camera_node, width: int, height: int) -> None:
-    """Persist render resolution into the camera's CA."""
-    if not is_node_valid(camera_node):
-        return
-    ensure_custom_attributes(camera_node)
-    camera_node.renderWidth = width
-    camera_node.renderHeight = height
-    camera_node.hasResolution = True
+    """Persist render resolution into the camera's focusResolutionPresets CA."""
+    ensure_res_custom_attributes(camera_node)
+    try:
+        if hasattr(camera_node, "focusResolutionPresets"):
+            camera_node.focusResolutionPresets.renderWidth = width
+            camera_node.focusResolutionPresets.renderHeight = height
+            camera_node.focusResolutionPresets.hasResolution = True
+        else:
+            camera_node.renderWidth = width
+            camera_node.renderHeight = height
+            camera_node.hasResolution = True
+    except Exception:
+        pass
 
 
 def load_resolution(camera_node) -> tuple:
     """
-    Read stored resolution from the camera's CA.
+    Read stored resolution from the camera's focusResolutionPresets CA.
 
     Returns:
         (width, height, has_resolution) — *has_resolution* is ``False`` when
         the CA is absent or no resolution has been saved yet.
     """
-    if not _has_ca(camera_node):
+    if not _has_res_ca(camera_node):
         return (0, 0, False)
     try:
-        has = bool(camera_node.hasResolution)
-        w = int(camera_node.renderWidth)
-        h = int(camera_node.renderHeight)
+        if hasattr(camera_node, "focusResolutionPresets"):
+            has = bool(camera_node.focusResolutionPresets.hasResolution)
+            w = int(camera_node.focusResolutionPresets.renderWidth)
+            h = int(camera_node.focusResolutionPresets.renderHeight)
+        else:
+            has = bool(camera_node.hasResolution)
+            w = int(camera_node.renderWidth)
+            h = int(camera_node.renderHeight)
         return (w, h, has)
     except Exception:
         return (0, 0, False)
