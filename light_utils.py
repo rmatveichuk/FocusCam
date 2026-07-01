@@ -254,20 +254,26 @@ def detect_renderer():
 
 # ── Corona helpers ───────────────────────────────────────────────────────────
 
-def _find_render_element_global_index(element_name):
-    """Find the 0-based index of a render element in the Render Setup list."""
+def _find_render_element_vfb_channel_index(element_name):
+    """Find the VFB channel index (2-based) of a render element, excluding LightSelect elements."""
     if rt is None:
-        return -1
+        return 2
     try:
         mgr = rt.maxOps.GetCurRenderElementMgr()
         num_elements = mgr.NumRenderElements()
+        vfb_index = 2  # 0 is Beauty, 1 is Alpha
         for i in range(num_elements):
             elem = mgr.GetRenderElement(i)
+            elem_class = str(rt.classOf(elem)).lower()
+            # Exclude LightSelect elements as they are not listed in the VFB channel dropdown
+            if "lightselect" in elem_class:
+                continue
             if elem.elementName == element_name:
-                return i
+                return vfb_index
+            vfb_index += 1
     except Exception:
         pass
-    return -1
+    return 2
 
 
 def _ensure_corona_camera_lightmix_element(camera_node):
@@ -459,13 +465,10 @@ def _apply_corona_lightmix(camera_node):
         except Exception:
             continue
 
-    # Determine the channel index in the VFB (Render Setup index + 2)
-    # 0 is Beauty, 1 is Alpha, render elements start at 2.
+    # Determine the channel index in the VFB (0 is Beauty, 1 is Alpha, render elements start at 2)
     vfb_chan = 2  # Default fallback
     try:
-        global_idx = _find_render_element_global_index("LMix_{}".format(camera_node.name))
-        if global_idx != -1:
-            vfb_chan = global_idx + 2
+        vfb_chan = _find_render_element_vfb_channel_index("LMix_{}".format(camera_node.name))
     except Exception:
         pass
 
