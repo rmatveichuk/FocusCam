@@ -341,10 +341,28 @@ def _find_corona_lightmix_channel_index(camera_node):
     return 0
 
 
+def _get_lightmix_preset_path(camera_node):
+    """Get the path to the .conf file for the camera's LightMix preset."""
+    if rt is None or camera_node is None:
+        return None
+    
+    scene_path = rt.maxFilePath
+    if scene_path and os.path.exists(scene_path):
+        presets_dir = os.path.join(scene_path, "Focus_LightMix")
+    else:
+        presets_dir = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "Focus_LightMix")
+        
+    try:
+        os.makedirs(presets_dir, exist_ok=True)
+    except Exception:
+        pass
+        
+    safe_name = "".join([c for c in camera_node.name if c.isalnum() or c in ("-", "_")]).strip()
+    return os.path.join(presets_dir, "LMix_{}.conf".format(safe_name))
+
+
 def _save_corona_lightmix(camera_node):
-    """Read Corona LightMix data via the CoronaFp interface and store it
-    in the camera CA arrays. Supports Corona 12+ (VFB2).
-    """
+    """Save Corona LightMix data using native saveLightMixSettings to a .conf file."""
     _ensure_corona_camera_lightmix_element(camera_node)
     lm_idx = _find_corona_lightmix_channel_index(camera_node)
     
@@ -356,50 +374,29 @@ def _save_corona_lightmix(camera_node):
         pass
 
     # If the camera's specific LightMix channel is not yet rendered/present in the VFB,
-    # read from the first available active VFB channel (index 0) where the user is making adjustments.
+    # read/save from the first available active VFB channel (index 0) where the user is making adjustments.
     read_idx = lm_idx if lm_idx < vfb_count else 0
-
+    
+    conf_file = _get_lightmix_preset_path(camera_node)
+    if not conf_file:
+        return False
+        
     try:
-        count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightSelectChannels {read_idx}".format(read_idx=read_idx)))
+        # Convert path separators to forward slashes for MAXScript safety
+        conf_file_mxs = conf_file.replace("\\", "/")
+        rt.execute(
+            "(CoronaRenderer.CoronaFp).saveLightMixSettings {read_idx} \"{filename}\""
+            .format(read_idx=read_idx, filename=conf_file_mxs)
+        )
     except Exception:
         return False
-
-    names = rt.Array()
-    intensities = rt.Array()
-    colors = rt.Array()
-    enabled_states = rt.Array()
-
-    for i in range(count):
-        try:
-            name = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectName {read_idx} {idx}".format(read_idx=read_idx, idx=i)
-            )
-            intensity = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectIntensity {read_idx} {idx}".format(read_idx=read_idx, idx=i)
-            )
-            color = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectColor {read_idx} {idx}".format(read_idx=read_idx, idx=i)
-            )
-            enabled = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectEnabled {read_idx} {idx}".format(read_idx=read_idx, idx=i)
-            )
-
-            rt.append(names, str(name) if name else "")
-            rt.append(intensities, float(intensity) if intensity is not None else 1.0)
-            
-            c_val = rt.Color(float(color.r), float(color.g), float(color.b)) if color else rt.Color(255, 255, 255)
-            rt.append(colors, c_val)
-            rt.append(enabled_states, bool(enabled))
-        except Exception:
-            continue
 
     try:
         ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
         if ca is not None:
-            ca.lmChannels = names
-            ca.lmIntensities = intensities
-            ca.lmColors = colors
-            ca.lmStates = enabled_states
+            # Mark hasMixPreset as True and populate lmChannels as a flag indicator
+            ca.lmChannels = rt.Array()
+            rt.append(ca.lmChannels, "use_external_conf")
             ca.hasMixPreset = True
             return True
     except Exception:
@@ -408,22 +405,7 @@ def _save_corona_lightmix(camera_node):
 
 
 def _apply_corona_lightmix(camera_node):
-    """Restore Corona LightMix channels from the camera's CA. Supports Corona 12+ (VFB2)."""
-    try:
-        ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
-        if ca is None or not ca.hasMixPreset:
-            return False
-            
-        names = ca.lmChannels
-        intensities = ca.lmIntensities
-        colors = ca.lmColors
-        enabled_states = ca.lmStates
-    except Exception:
-        return False
-
-    if names is None or intensities is None:
-        return False
-
+    """Restore Corona LightMix channels from the .conf file using loadLightMixSettings."""
     _ensure_corona_camera_lightmix_element(camera_node)
     lm_idx = _find_corona_lightmix_channel_index(camera_node)
     
@@ -437,35 +419,21 @@ def _apply_corona_lightmix(camera_node):
     # If the camera's specific LightMix channel is not yet rendered/present in the VFB,
     # apply to the first available active VFB channel (index 0) so the VFB updates visually.
     apply_idx = lm_idx if lm_idx < vfb_count else 0
-    count = int(names.count) if hasattr(names, "count") else 0
+    
+    conf_file = _get_lightmix_preset_path(camera_node)
+    if not conf_file or not os.path.exists(conf_file):
+        return False
+        
+    try:
+        conf_file_mxs = conf_file.replace("\\", "/")
+        rt.execute(
+            "(CoronaRenderer.CoronaFp).loadLightMixSettings {apply_idx} \"{filename}\""
+            .format(apply_idx=apply_idx, filename=conf_file_mxs)
+        )
+    except Exception:
+        pass
 
-    for i in range(count):
-        idx_mx = i + 1  # MAXScript 1-indexed array
-        ch_idx = i       # CoronaFp uses 0-indexed channels
-        try:
-            intensity_val = float(intensities[idx_mx])
-            c = colors[idx_mx]
-            cr = float(c.r)
-            cg = float(c.g)
-            cb = float(c.b)
-            en = bool(enabled_states[idx_mx])
-
-            rt.execute(
-                "(CoronaRenderer.CoronaFp).setLightSelectIntensity {apply_idx} {idx} {val}"
-                .format(apply_idx=apply_idx, idx=ch_idx, val=intensity_val)
-            )
-            rt.execute(
-                "(CoronaRenderer.CoronaFp).setLightSelectColor {apply_idx} {idx} (color {r} {g} {b})"
-                .format(apply_idx=apply_idx, idx=ch_idx, r=cr, g=cg, b=cb)
-            )
-            rt.execute(
-                "(CoronaRenderer.CoronaFp).setLightSelectEnabled {apply_idx} {idx} {val}"
-                .format(apply_idx=apply_idx, idx=ch_idx, val="true" if en else "false")
-            )
-        except Exception:
-            continue
-
-    # Determine the channel index in the VFB (0 is Beauty, 1 is Alpha, render elements start at 2)
+    # Switch the displayed VFB channel to match the LightMix element
     vfb_chan = 2  # Default fallback
     try:
         vfb_chan = _find_render_element_vfb_channel_index("LMix_{}".format(camera_node.name))
@@ -483,10 +451,15 @@ def _apply_corona_lightmix(camera_node):
 
     try:
         # Also switch the active LightMix channel in the VFB tab (backup/sync)
+        rt.execute("global focus_lm_error = \"\"")
         rt.execute(
-            "(CoronaRenderer.CoronaFp).setDisplayedLightMixChannel {apply_idx}"
+            "try ( (CoronaRenderer.CoronaFp).setDisplayedLightMixChannel {apply_idx} ) catch ( focus_lm_error = getCurrentException() )"
             .format(apply_idx=apply_idx)
         )
+        err = rt.execute("focus_lm_error")
+        if err:
+            with open("C:\\Users\\RMatv\\.gemini\\antigravity\\brain\\925fc049-fb8f-412b-9e5d-60184321c2d6\\scratch\\vfb_error.txt", "a", encoding="utf-8") as f:
+                f.write("setDisplayedLightMixChannel Error: {}\n".format(err))
     except Exception:
         pass
 
