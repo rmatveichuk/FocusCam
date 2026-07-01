@@ -267,13 +267,13 @@ def _ensure_corona_camera_lightmix_element(camera_node):
         for i in range(num_elements):
             elem = mgr.GetRenderElement(i)
             if str(rt.classOf(elem)).lower() == "cshading_lightmix":
-                if elem.name == element_name:
+                if elem.elementName == element_name:
                     return elem
 
         # Create new CShading_LightMix element
         new_elem = rt.execute("CShading_LightMix()")
         if new_elem is not None:
-            new_elem.name = element_name
+            new_elem.elementName = element_name
             mgr.AddRenderElement(new_elem)
             return new_elem
     except Exception:
@@ -292,7 +292,7 @@ def _remove_corona_camera_lightmix_element(camera_node):
         for i in range(num_elements):
             elem = mgr.GetRenderElement(i)
             if str(rt.classOf(elem)).lower() == "cshading_lightmix":
-                if elem.name == element_name:
+                if elem.elementName == element_name:
                     mgr.RemoveRenderElement(elem)
                     break
     except Exception:
@@ -311,7 +311,7 @@ def _find_corona_lightmix_channel_index(camera_node):
         for i in range(num_elements):
             elem = mgr.GetRenderElement(i)
             if str(rt.classOf(elem)).lower() == "cshading_lightmix":
-                if elem.name == element_name:
+                if elem.elementName == element_name:
                     return lm_index
                 lm_index += 1
     except Exception:
