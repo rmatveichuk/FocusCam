@@ -325,8 +325,20 @@ def _save_corona_lightmix(camera_node):
     """
     _ensure_corona_camera_lightmix_element(camera_node)
     lm_idx = _find_corona_lightmix_channel_index(camera_node)
+    
+    # Check how many LightMix channels are currently rendered in the active VFB
+    vfb_count = 0
     try:
-        count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightSelectChannels {lm_idx}".format(lm_idx=lm_idx)))
+        vfb_count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightMixChannels()"))
+    except Exception:
+        pass
+
+    # If the camera's specific LightMix channel is not yet rendered/present in the VFB,
+    # read from the first available active VFB channel (index 0) where the user is making adjustments.
+    read_idx = lm_idx if lm_idx < vfb_count else 0
+
+    try:
+        count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightSelectChannels {read_idx}".format(read_idx=read_idx)))
     except Exception:
         return False
 
@@ -338,16 +350,16 @@ def _save_corona_lightmix(camera_node):
     for i in range(count):
         try:
             name = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectName {lm_idx} {idx}".format(lm_idx=lm_idx, idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectName {read_idx} {idx}".format(read_idx=read_idx, idx=i)
             )
             intensity = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectIntensity {lm_idx} {idx}".format(lm_idx=lm_idx, idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectIntensity {read_idx} {idx}".format(read_idx=read_idx, idx=i)
             )
             color = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectColor {lm_idx} {idx}".format(lm_idx=lm_idx, idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectColor {read_idx} {idx}".format(read_idx=read_idx, idx=i)
             )
             enabled = rt.execute(
-                "(CoronaRenderer.CoronaFp).getLightSelectEnabled {lm_idx} {idx}".format(lm_idx=lm_idx, idx=i)
+                "(CoronaRenderer.CoronaFp).getLightSelectEnabled {read_idx} {idx}".format(read_idx=read_idx, idx=i)
             )
 
             rt.append(names, str(name) if name else "")
@@ -392,6 +404,17 @@ def _apply_corona_lightmix(camera_node):
 
     _ensure_corona_camera_lightmix_element(camera_node)
     lm_idx = _find_corona_lightmix_channel_index(camera_node)
+    
+    # Check how many LightMix channels are currently rendered in the active VFB
+    vfb_count = 0
+    try:
+        vfb_count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightMixChannels()"))
+    except Exception:
+        pass
+
+    # If the camera's specific LightMix channel is not yet rendered/present in the VFB,
+    # apply to the first available active VFB channel (index 0) so the VFB updates visually.
+    apply_idx = lm_idx if lm_idx < vfb_count else 0
     count = int(names.count) if hasattr(names, "count") else 0
 
     for i in range(count):
@@ -406,24 +429,24 @@ def _apply_corona_lightmix(camera_node):
             en = bool(enabled_states[idx_mx])
 
             rt.execute(
-                "(CoronaRenderer.CoronaFp).setLightSelectIntensity {lm_idx} {idx} {val}"
-                .format(lm_idx=lm_idx, idx=ch_idx, val=intensity_val)
+                "(CoronaRenderer.CoronaFp).setLightSelectIntensity {apply_idx} {idx} {val}"
+                .format(apply_idx=apply_idx, idx=ch_idx, val=intensity_val)
             )
             rt.execute(
-                "(CoronaRenderer.CoronaFp).setLightSelectColor {lm_idx} {idx} (color {r} {g} {b})"
-                .format(lm_idx=lm_idx, idx=ch_idx, r=cr, g=cg, b=cb)
+                "(CoronaRenderer.CoronaFp).setLightSelectColor {apply_idx} {idx} (color {r} {g} {b})"
+                .format(apply_idx=apply_idx, idx=ch_idx, r=cr, g=cg, b=cb)
             )
             rt.execute(
-                "(CoronaRenderer.CoronaFp).setLightSelectEnabled {lm_idx} {idx} {val}"
-                .format(lm_idx=lm_idx, idx=ch_idx, val="true" if en else "false")
+                "(CoronaRenderer.CoronaFp).setLightSelectEnabled {apply_idx} {idx} {val}"
+                .format(apply_idx=apply_idx, idx=ch_idx, val="true" if en else "false")
             )
         except Exception:
             continue
 
     try:
         rt.execute(
-            "(CoronaRenderer.CoronaFp).setDisplayedLightMixChannel {lm_idx}"
-            .format(lm_idx=lm_idx)
+            "(CoronaRenderer.CoronaFp).setDisplayedLightMixChannel {apply_idx}"
+            .format(apply_idx=apply_idx)
         )
     except Exception:
         pass
