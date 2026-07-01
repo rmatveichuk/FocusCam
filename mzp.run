@@ -1,0 +1,22 @@
+name "RM Focus"
+version 1.0
+
+run "PreInstall.ms"
+
+copy "RM_Focus.mcr" to "$userMacros\"
+copy "focus_manager.py" to "$userScripts\Focus\"
+copy "camera_utils.py" to "$userScripts\Focus\"
+copy "light_utils.py" to "$userScripts\Focus\"
+copy "overlay_utils.py" to "$userScripts\Focus\"
+copy "ui_components.py" to "$userScripts\Focus\"
+copy "__init__.py" to "$userScripts\Focus\"
+copy "style.qss" to "$userScripts\Focus\"
+copy "Icon.svg" to "$userScripts\Focus\"
+
+copy "Icon.svg" to "$userIcons\Dark\"
+copy "Icon.svg" to "$userIcons\Light\"
+
+run "Install.ms"
+drop "Install.ms"
+
+clear temp on MAX exit

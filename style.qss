@@ -1,0 +1,254 @@
+/* ============================================================
+   Focus — QSS Stylesheet
+   Dark grayscale theme for 3ds Max integration
+   ============================================================ */
+
+/* --- Global --- */
+QWidget {
+    background-color: #2b2b2b;
+    color: #cccccc;
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 14px;
+    border: none;
+}
+
+/* --- Scroll Area --- */
+QScrollArea {
+    background-color: #2b2b2b;
+    border: none;
+}
+
+QScrollBar:vertical {
+    background: #252525;
+    width: 8px;
+    margin: 0;
+    border: none;
+}
+
+QScrollBar::handle:vertical {
+    background: #4a4a4a;
+    min-height: 30px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #585858;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+/* --- Labels --- */
+QLabel {
+    background: transparent;
+    color: #b0b0b0;
+    border: none;
+}
+
+QLabel#headerLabel {
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    color: #999999;
+    padding: 6px 8px;
+}
+
+QLabel#cameraName {
+    font-size: 16px;
+    color: #cccccc;
+    padding: 2px 4px;
+}
+
+QLabel#cameraNameActive {
+    font-size: 16px;
+    font-weight: bold;
+    color: #ffffff;
+    padding: 2px 4px;
+}
+
+QLabel#presetIndicator {
+    font-size: 12px;
+    color: #555555;
+}
+
+QLabel#presetIndicatorActive {
+    font-size: 12px;
+    color: #aaaaaa;
+}
+
+QLabel#resolutionLabel {
+    font-size: 10px;
+    color: #888888;
+}
+
+/* --- Camera Card Frame --- */
+QFrame#cameraCard {
+    background-color: #303030;
+    border: 1px solid #3a3a3a;
+    border-radius: 2px;
+    margin: 2px 4px;
+    padding: 4px;
+}
+
+QFrame#cameraCard:hover {
+    background-color: #363636;
+    border-color: #4a4a4a;
+}
+
+QFrame#cameraCardActive {
+    background-color: #3a3a3a;
+    border: 1px solid #606060;
+    border-radius: 2px;
+    margin: 2px 4px;
+    padding: 4px;
+}
+
+/* --- Toolbar Panel --- */
+QFrame#toolbarPanel {
+    background-color: #282828;
+    border-top: 1px solid #3a3a3a;
+    padding: 6px 8px;
+}
+
+/* --- Buttons (standard) --- */
+QPushButton {
+    background-color: #3a3a3a;
+    border: 1px solid #4a4a4a;
+    border-radius: 2px;
+    padding: 4px 10px;
+    color: #bbbbbb;
+    min-height: 28px;
+}
+
+QPushButton:hover {
+    background-color: #444444;
+    border-color: #555555;
+    color: #dddddd;
+}
+
+QPushButton:pressed {
+    background-color: #2a2a2a;
+}
+
+QPushButton:checked {
+    background-color: #4f4f4f;
+    border-color: #666666;
+    color: #e0e0e0;
+}
+
+QPushButton:disabled {
+    background-color: #2e2e2e;
+    border-color: #383838;
+    color: #555555;
+}
+
+/* --- Preset buttons (Light, LMix) --- */
+QPushButton#presetButton {
+    min-width: 60px;
+    padding: 4px 8px;
+}
+
+QPushButton#presetButton:checked {
+    background-color: #4f4f4f;
+    border-color: #666666;
+    color: #e0e0e0;
+}
+
+/* --- Swap & Refresh buttons --- */
+QPushButton#swapButton,
+QPushButton#refreshButton {
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 28px;
+    padding: 2px;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+/* --- Lock button --- */
+QPushButton#lockButton {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0;
+    font-size: 14px;
+}
+
+/* --- Overlay mini-buttons [1] [2] [3] [4] --- */
+QPushButton#overlayButton {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0;
+    font-size: 13px;
+    font-weight: bold;
+    border-radius: 2px;
+}
+
+QPushButton#overlayButton:checked {
+    background-color: #4f4f4f;
+    border-color: #666666;
+    color: #e0e0e0;
+}
+
+/* --- Resolution spin boxes --- */
+QSpinBox {
+    background-color: #333333;
+    border: 1px solid #4a4a4a;
+    border-radius: 2px;
+    padding: 2px 4px;
+    color: #cccccc;
+    min-height: 28px;
+    min-width: 65px;
+}
+
+QSpinBox:focus {
+    border-color: #666666;
+}
+
+QSpinBox::up-button,
+QSpinBox::down-button {
+    width: 0;
+    height: 0;
+    border: none;
+}
+
+/* --- Separator line --- */
+QFrame#separator {
+    background-color: #3a3a3a;
+    max-height: 1px;
+    min-height: 1px;
+    margin: 2px 6px;
+}
+
+/* --- Context Menu --- */
+QMenu {
+    background-color: #333333;
+    border: 1px solid #4a4a4a;
+    padding: 4px 0;
+}
+
+QMenu::item {
+    padding: 5px 20px;
+    color: #cccccc;
+}
+
+QMenu::item:selected {
+    background-color: #4a4a4a;
+    color: #ffffff;
+}
+
+QMenu::separator {
+    height: 1px;
+    background: #4a4a4a;
+    margin: 3px 8px;
+}
