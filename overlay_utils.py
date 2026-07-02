@@ -390,7 +390,7 @@ class OverlayManager:
             "global {name}\n"
             "try(unregisterRedrawViewsCallback {name})catch()\n"
             "fn {name} = (\n"
-            "    python.execute \"import sys; m = sys.modules.get('Focus.overlay_utils') or sys.modules.get('overlay_utils'); m._redraw_callback_entry() if m else None\"\n"
+            "    python.execute \"import sys; m = sys.modules.get('FocusCam.overlay_utils') or sys.modules.get('Focus.overlay_utils') or sys.modules.get('overlay_utils'); m._redraw_callback_entry() if m else None\"\n"
             ")\n"
             "registerRedrawViewsCallback {name}\n"
         ).format(name=self._callback_name)

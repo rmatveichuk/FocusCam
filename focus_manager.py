@@ -121,6 +121,7 @@ class FocusCamWindow(QDockWidget):
         
         self.refresh_cameras()
         self.overlay_mgr.register_callback()
+        register_scene_callbacks()
         
         # Resolution synchronization timer (polls 3ds Max Render Setup every 500ms)
         self._res_sync_timer = QTimer(self)
@@ -194,6 +195,11 @@ class FocusCamWindow(QDockWidget):
             self._thumb_queue.clear()
         except:
             pass
+
+        # Check if the node is valid (e.g. scene was closed)
+        if not camera_utils.is_node_valid(camera_node):
+            self.refresh_cameras()
+            return
 
         # Debug logging to find the root cause
         if rt:
@@ -414,6 +420,7 @@ class FocusCamWindow(QDockWidget):
     def closeEvent(self, event):
         """Clean up callbacks when the window is closed."""
         self.overlay_mgr.unregister_callback()
+        unregister_scene_callbacks()
         if self._thumb_timer.isActive():
             self._thumb_timer.stop()
         if self._res_sync_timer.isActive():
@@ -504,6 +511,36 @@ def show_focus_window():
 
     _focus_window.show()
     _focus_window.raise_()
+
+
+def register_scene_callbacks():
+    if rt is None:
+        return
+    mxs = """
+    global _FocusCam_SceneCallback
+    fn _FocusCam_SceneCallback = (
+        python.execute "import sys; m = sys.modules.get('FocusCam.focus_manager') or sys.modules.get('Focus.focus_manager') or sys.modules.get('focus_manager'); m.refresh_active_window() if m else None"
+    )
+    callbacks.addScript #filePostOpen "_FocusCam_SceneCallback()" id:#FocusCamScene
+    callbacks.addScript #systemPostReset "_FocusCam_SceneCallback()" id:#FocusCamScene
+    callbacks.addScript #systemPostNew "_FocusCam_SceneCallback()" id:#FocusCamScene
+    """
+    rt.execute(mxs)
+
+
+def unregister_scene_callbacks():
+    if rt is None:
+        return
+    rt.execute("callbacks.removeScripts id:#FocusCamScene")
+
+
+def refresh_active_window():
+    global _focus_window
+    if _focus_window is not None:
+        try:
+            _focus_window.refresh_cameras()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
