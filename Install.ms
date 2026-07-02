@@ -1,5 +1,5 @@
 ﻿(
-    local mcrName = "FocusCam.mcr"
+    local mcrName = "FocusCam_UI.mcr"
     local mcrPath = (getdir #userMacros) + "\\" + mcrName
     
     -- Регистрируем макроскрипт в текущей сессии 3ds Max

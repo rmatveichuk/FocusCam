@@ -30,10 +30,10 @@ iconName:"Icon"
     )
 )
 """
-    mcr_path = os.path.join(current_dir, "FocusCam.mcr")
+    mcr_path = os.path.join(current_dir, "FocusCam_UI.mcr")
     with open(mcr_path, "w", encoding="utf-8-sig") as f:
         f.write(mcr_content)
-    print("Created FocusCam.mcr (UTF-8 with BOM)")
+    print("Created FocusCam_UI.mcr (UTF-8 with BOM)")
 
 
     # 3. Create PreInstall.ms (UTF-8 with BOM / utf-8-sig)
@@ -78,7 +78,7 @@ iconName:"Icon"
 
     # 4. Create Install.ms (UTF-8 with BOM / utf-8-sig) - Post Install
     install_ms_content = """(
-    local mcrName = "FocusCam.mcr"
+    local mcrName = "FocusCam_UI.mcr"
     local mcrPath = (getdir #userMacros) + "\\\\" + mcrName
     
     -- Регистрируем макроскрипт в текущей сессии 3ds Max
@@ -120,7 +120,7 @@ version 1.0
 
 run "PreInstall.ms"
 
-copy "FocusCam.mcr" to "$userMacros\\"
+copy "FocusCam_UI.mcr" to "$userMacros\\"
 copy "focus_manager.py" to "$userScripts\\FocusCam\\"
 copy "camera_utils.py" to "$userScripts\\FocusCam\\"
 copy "light_utils.py" to "$userScripts\\FocusCam\\"
@@ -148,7 +148,7 @@ clear temp on MAX exit
         "mzp.run",
         "PreInstall.ms",
         "Install.ms",
-        "FocusCam.mcr",
+        "FocusCam_UI.mcr",
         "focus_manager.py",
         "camera_utils.py",
         "light_utils.py",

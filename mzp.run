@@ -3,7 +3,7 @@ version 1.0
 
 run "PreInstall.ms"
 
-copy "FocusCam.mcr" to "$userMacros\"
+copy "FocusCam_UI.mcr" to "$userMacros\"
 copy "focus_manager.py" to "$userScripts\FocusCam\"
 copy "camera_utils.py" to "$userScripts\FocusCam\"
 copy "light_utils.py" to "$userScripts\FocusCam\"
