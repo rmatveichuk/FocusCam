@@ -31,14 +31,13 @@ class ThumbnailLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.original_pixmap = None
-        self.setStyleSheet("background-color: #222; border-radius: 2px;")
+        self.setObjectName("thumbnailLabel")
         self.setAlignment(Qt.AlignCenter)
         
     def setPixmap(self, pixmap, target_w=None, target_h=None):
         self.original_pixmap = pixmap
         self.target_w = target_w
         self.target_h = target_h
-        self.setStyleSheet("background-color: #000000; border-radius: 2px;")
         self.update_thumbnail()
         
     def resizeEvent(self, event):
@@ -112,21 +111,23 @@ class CameraCardWidget(QFrame):
         super().__init__(parent)
         self.camera_node = camera_node
         self.setObjectName("cameraCard")
-        self.setFixedSize(308, 218)
+        self.setFixedHeight(218)
+        self.setMinimumWidth(300)
 
         # -- Layout --
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(4, 4, 4, 4)
-        self.layout.setSpacing(4)
+        self.layout.setContentsMargins(8, 8, 8, 6)
+        self.layout.setSpacing(6)
 
         # Thumbnail (placeholder initially)
         self.thumbnail_lbl = ThumbnailLabel()
-        self.thumbnail_lbl.setFixedSize(304, 171)
-        self.layout.addWidget(self.thumbnail_lbl, alignment=Qt.AlignCenter)
+        self.thumbnail_lbl.setFixedHeight(171)
+        self.thumbnail_lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.layout.addWidget(self.thumbnail_lbl)
 
         # Info bar (Name + Indicators)
         self.info_layout = QHBoxLayout()
-        self.info_layout.setContentsMargins(4, 0, 4, 0)
+        self.info_layout.setContentsMargins(0, 0, 0, 0)
         
         self.name_lbl = QLabel(getattr(camera_node, "name", "Unknown Camera"))
         self.name_lbl.setObjectName("cameraName")
@@ -176,8 +177,8 @@ class CameraCardWidget(QFrame):
         has_l = light_utils.has_light_preset(self.camera_node)
         has_m = light_utils.has_lightmix_preset(self.camera_node)
         
-        self.light_ind.setObjectName("presetIndicatorActive" if has_l else "presetIndicator")
-        self.lmix_ind.setObjectName("presetIndicatorActive" if has_m else "presetIndicator")
+        self.light_ind.setObjectName("lightPresetIndicatorActive" if has_l else "presetIndicator")
+        self.lmix_ind.setObjectName("lmixPresetIndicatorActive" if has_m else "presetIndicator")
         
         safe_refresh_style(self.light_ind)
         safe_refresh_style(self.lmix_ind)
@@ -237,36 +238,41 @@ class FocusUI(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.active_camera_node = None
-        
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
-        self.layout.setAlignment(Qt.AlignHCenter)
 
         # -- Camera List --
         self.cam_list = CameraListWidget()
-        self.cam_list.setFixedWidth(326)
+        self.cam_list.setMinimumWidth(320)
         self.cam_list.order_changed.connect(self._on_list_reordered)
         self.layout.addWidget(self.cam_list, stretch=1)
         
         # -- Toolbar --
         self.toolbar = QFrame()
         self.toolbar.setObjectName("toolbarPanel")
-        self.toolbar.setFixedWidth(326)
+        self.toolbar.setMinimumWidth(320)
         
         self.tb_main_layout = QVBoxLayout(self.toolbar)
-        self.tb_main_layout.setContentsMargins(4, 4, 4, 4)
-        self.tb_main_layout.setSpacing(4)
+        self.tb_main_layout.setContentsMargins(6, 6, 6, 6)
+        self.tb_main_layout.setSpacing(6)
         
-        # Row 1 Layout: w_spin -> lock_btn -> h_spin -> swap_btn -> refresh_btn
-        self.tb_row1 = QHBoxLayout()
-        self.tb_row1.setSpacing(4)
+        # Side-by-side columns layout
+        self.tb_cols_layout = QHBoxLayout()
+        self.tb_cols_layout.setSpacing(6)
         
-        # Resolution controls
+        # Left Column (Dimensions)
+        self.left_col = QVBoxLayout()
+        self.left_col.setSpacing(4)
+        
         self.w_spin = QSpinBox()
         self.w_spin.setRange(1, 99999)
         self.w_spin.setButtonSymbols(QSpinBox.NoButtons)
         self.w_spin.setAlignment(Qt.AlignCenter)
+        
+        # Lock + Swap Row
+        self.lock_swap_row = QHBoxLayout()
+        self.lock_swap_row.setSpacing(4)
         
         self.lock_btn = QPushButton("🔓")
         self.lock_btn.setObjectName("lockButton")
@@ -276,90 +282,116 @@ class FocusUI(QWidget):
         self._locked_aspect_ratio = None
         self._is_syncing_res = False
         
+        self.swap_btn = QPushButton("⇄")
+        self.swap_btn.setObjectName("swapButton")
+        self.swap_btn.clicked.connect(self._on_swap_clicked)
+        
+        self.lock_swap_row.addWidget(self.lock_btn, stretch=1)
+        self.lock_swap_row.addWidget(self.swap_btn, stretch=1)
+        
         self.h_spin = QSpinBox()
         self.h_spin.setRange(1, 99999)
         self.h_spin.setButtonSymbols(QSpinBox.NoButtons)
         self.h_spin.setAlignment(Qt.AlignCenter)
-        
-        self.swap_btn = QPushButton("⇄")
-        self.swap_btn.setObjectName("swapButton")
-        self.swap_btn.setFixedSize(32, 28)
-        self.swap_btn.clicked.connect(self._on_swap_clicked)
-        
-        self.refresh_btn = QPushButton("⟳")
-        self.refresh_btn.setObjectName("refreshButton")
-        self.refresh_btn.setFixedSize(32, 28)
-        self.refresh_btn.setToolTip("Rescan scene cameras")
-        self.refresh_btn.clicked.connect(self.refresh_clicked.emit)
         
         # Connect spinboxes
         self.w_spin.editingFinished.connect(self._on_res_edited)
         self.h_spin.editingFinished.connect(self._on_res_edited)
         self.w_spin.valueChanged.connect(self._on_w_value_changed)
         self.h_spin.valueChanged.connect(self._on_h_value_changed)
-
-        self.tb_row1.addWidget(self.w_spin, stretch=1)
-        self.tb_row1.addWidget(self.lock_btn)
-        self.tb_row1.addWidget(self.h_spin, stretch=1)
-        self.tb_row1.addWidget(self.swap_btn)
-        self.tb_row1.addWidget(self.refresh_btn)
         
-        # Row 2 Layout: ov1 -> ov2 -> ov3 -> ov4 -> light_btn -> lmix_btn
-        self.tb_row2 = QHBoxLayout()
-        self.tb_row2.setSpacing(4)
+        self.left_col.addWidget(self.w_spin)
+        self.left_col.addLayout(self.lock_swap_row)
+        self.left_col.addWidget(self.h_spin)
         
-        self.ov1 = QPushButton("1")
-        self.ov1.setObjectName("overlayButton")
-        self.ov1.setFixedHeight(28)
-        self.ov1.setCheckable(True)
-        self.ov1.setToolTip("Rule of Thirds")
-        self.ov1.toggled.connect(lambda state: self.overlay_toggled.emit(1, state))
+        # Right Column (Rescan, Light, LMix)
+        self.right_col = QVBoxLayout()
+        self.right_col.setSpacing(4)
         
-        self.ov2 = QPushButton("2")
-        self.ov2.setObjectName("overlayButton")
-        self.ov2.setFixedHeight(28)
-        self.ov2.setCheckable(True)
-        self.ov2.setToolTip("Golden Ratio")
-        self.ov2.toggled.connect(lambda state: self.overlay_toggled.emit(2, state))
+        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn.setObjectName("refreshButton")
+        self.refresh_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.refresh_btn.setToolTip("Rescan scene cameras")
+        self.refresh_btn.clicked.connect(self.refresh_clicked.emit)
         
-        self.ov3 = QPushButton("3")
-        self.ov3.setObjectName("overlayButton")
-        self.ov3.setFixedHeight(28)
-        self.ov3.setCheckable(True)
-        self.ov3.setToolTip("Diagonals")
-        self.ov3.toggled.connect(lambda state: self.overlay_toggled.emit(3, state))
+        # Light + LMix Row
+        self.presets_row = QHBoxLayout()
+        self.presets_row.setSpacing(4)
         
-        self.ov4 = QPushButton("4")
-        self.ov4.setObjectName("overlayButton")
-        self.ov4.setFixedHeight(28)
-        self.ov4.setCheckable(True)
-        self.ov4.setToolTip("Fibonacci Spiral")
-        self.ov4.toggled.connect(lambda state: self.overlay_toggled.emit(4, state))
-
-        # Preset buttons
         self.light_btn = QPushButton("Light")
-        self.light_btn.setObjectName("presetButton")
+        self.light_btn.setObjectName("lightPresetButton")
         self.light_btn.setCheckable(True)
         self.light_btn.setToolTip("Physical Light Preset")
         self.light_btn.clicked.connect(self._on_light_clicked)
         
         self.lmix_btn = QPushButton("LMix")
-        self.lmix_btn.setObjectName("presetButton")
+        self.lmix_btn.setObjectName("lmixPresetButton")
         self.lmix_btn.setCheckable(True)
         self.lmix_btn.setToolTip("LightMix Preset")
         self.lmix_btn.clicked.connect(self._on_lmix_clicked)
-
-        self.tb_row2.addWidget(self.ov1)
-        self.tb_row2.addWidget(self.ov2)
-        self.tb_row2.addWidget(self.ov3)
-        self.tb_row2.addWidget(self.ov4)
-        self.tb_row2.addWidget(self.light_btn, stretch=1)
-        self.tb_row2.addWidget(self.lmix_btn, stretch=1)
         
-        self.tb_main_layout.addLayout(self.tb_row1)
-        self.tb_main_layout.addLayout(self.tb_row2)
+        self.presets_row.addWidget(self.light_btn, stretch=1)
+        self.presets_row.addWidget(self.lmix_btn, stretch=1)
+        
+        self.right_col.addWidget(self.refresh_btn)
+        self.right_col.addLayout(self.presets_row)
+        
+        # Add columns to main cols layout
+        self.tb_cols_layout.addLayout(self.left_col, stretch=1)
+        self.tb_cols_layout.addLayout(self.right_col, stretch=1)
+        
+        self.tb_main_layout.addLayout(self.tb_cols_layout)
+        
+        # Separator line
+        self.sep = QFrame()
+        self.sep.setObjectName("separator")
+        self.tb_main_layout.addWidget(self.sep)
+        
+        # Bottom Row (Overlays) - thin buttons without text
+        self.tb_row_overlays = QHBoxLayout()
+        self.tb_row_overlays.setSpacing(4)
+        
+        self.ov1 = QPushButton()
+        self.ov1.setObjectName("overlayButton")
+        self.ov1.setFixedHeight(18)
+        self.ov1.setCheckable(True)
+        self.ov1.setToolTip("Rule of Thirds")
+        self.ov1.toggled.connect(lambda state: self.overlay_toggled.emit(1, state))
+        
+        self.ov2 = QPushButton()
+        self.ov2.setObjectName("overlayButton")
+        self.ov2.setFixedHeight(18)
+        self.ov2.setCheckable(True)
+        self.ov2.setToolTip("Golden Ratio")
+        self.ov2.toggled.connect(lambda state: self.overlay_toggled.emit(2, state))
+        
+        self.ov3 = QPushButton()
+        self.ov3.setObjectName("overlayButton")
+        self.ov3.setFixedHeight(18)
+        self.ov3.setCheckable(True)
+        self.ov3.setToolTip("Diagonals")
+        self.ov3.toggled.connect(lambda state: self.overlay_toggled.emit(3, state))
+        
+        self.ov4 = QPushButton()
+        self.ov4.setObjectName("overlayButton")
+        self.ov4.setFixedHeight(18)
+        self.ov4.setCheckable(True)
+        self.ov4.setToolTip("Fibonacci Spiral")
+        self.ov4.toggled.connect(lambda state: self.overlay_toggled.emit(4, state))
+        
+        self.tb_row_overlays.addWidget(self.ov1)
+        self.tb_row_overlays.addWidget(self.ov2)
+        self.tb_row_overlays.addWidget(self.ov3)
+        self.tb_row_overlays.addWidget(self.ov4)
+        
+        self.tb_main_layout.addLayout(self.tb_row_overlays)
         
         self.layout.addWidget(self.toolbar)
+        
+        # Disable focus outlines on all buttons
+        for btn in self.findChildren(QPushButton):
+            btn.setFocusPolicy(Qt.NoFocus)
+            
         self.set_toolbar_enabled(False)
         
     def populate_cameras(self, cameras):
@@ -371,7 +403,7 @@ class FocusUI(QWidget):
             card.right_clicked.connect(self._on_card_right_clicked)
             
             item = QListWidgetItem(self.cam_list)
-            item.setSizeHint(card.sizeHint())
+            item.setSizeHint(QSize(card.sizeHint().width(), card.sizeHint().height() + 6))
             # Store node reference in user data for reordering
             item.setData(Qt.UserRole, cam)
             

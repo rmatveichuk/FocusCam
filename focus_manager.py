@@ -62,8 +62,8 @@ class FocusManagerWindow(QDockWidget):
         self.setObjectName("FocusDockWidget")
         self.setWindowTitle("Focus Camera & Light Manager")
         self.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-        self.setFixedWidth(336)
-        self.resize(336, 650)
+        self.setMinimumWidth(330)
+        self.resize(340, 650)
         
         # Window Icon
         icon_path = os.path.join(os.path.dirname(__file__), "Icon.svg")
@@ -86,8 +86,8 @@ class FocusManagerWindow(QDockWidget):
         
         # Init UI
         self.ui = FocusUI()
-        self.ui.setFixedWidth(326)
-        layout.addWidget(self.ui, alignment=Qt.AlignHCenter)
+        self.ui.setMinimumWidth(320)
+        layout.addWidget(self.ui)
         
         self._apply_stylesheet()
         self._connect_signals()

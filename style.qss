@@ -1,6 +1,6 @@
 /* ============================================================
    Focus — QSS Stylesheet
-   Dark grayscale theme for 3ds Max integration
+   Premium dark theme with 3ds Max Blue and Corona Gold highlights
    ============================================================ */
 
 /* --- Global --- */
@@ -12,27 +12,50 @@ QWidget {
     border: none;
 }
 
-/* --- Scroll Area --- */
+/* --- Scroll Area & List Widget --- */
 QScrollArea {
     background-color: #2b2b2b;
     border: none;
 }
 
+QListWidget {
+    background-color: #202020;
+    border: none;
+    outline: none;
+    padding: 4px;
+}
+
+/* Hide standard QListWidget selection bars so custom cards handle selection */
+QListWidget::item {
+    background: transparent;
+    border: none;
+    margin-bottom: 4px; /* Reduced from 8px to halve the gap */
+}
+
+QListWidget::item:selected,
+QListWidget::item:selected:active,
+QListWidget::item:selected:not(active),
+QListWidget::item:hover {
+    background: transparent;
+    border: none;
+    outline: none;
+}
+
 QScrollBar:vertical {
-    background: #252525;
-    width: 8px;
+    background: #1c1c1c;
+    width: 6px;
     margin: 0;
     border: none;
 }
 
 QScrollBar::handle:vertical {
-    background: #4a4a4a;
+    background: #444444;
     min-height: 30px;
-    border-radius: 4px;
+    border-radius: 3px;
 }
 
 QScrollBar::handle:vertical:hover {
-    background: #585858;
+    background: #555555;
 }
 
 QScrollBar::add-line:vertical,
@@ -52,167 +75,202 @@ QLabel {
     border: none;
 }
 
-QLabel#headerLabel {
-    font-size: 16px;
-    font-weight: bold;
-    letter-spacing: 3px;
-    color: #999999;
-    padding: 6px 8px;
-}
-
 QLabel#cameraName {
-    font-size: 16px;
-    color: #cccccc;
+    font-size: 14px;
+    color: #aaaaaa;
     padding: 2px 4px;
 }
 
 QLabel#cameraNameActive {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: bold;
     color: #ffffff;
     padding: 2px 4px;
 }
 
+/* --- Status Indicators (Plain text, no circles) --- */
+QLabel#presetIndicator, 
+QLabel#lightPresetIndicatorActive, 
+QLabel#lmixPresetIndicatorActive {
+    font-size: 14px;
+    font-weight: bold;
+    min-width: 15px;
+    max-width: 15px;
+    min-height: 16px;
+    max-height: 16px;
+    qproperty-alignment: 'AlignCenter';
+    background: transparent;
+    border: none;
+}
+
 QLabel#presetIndicator {
-    font-size: 12px;
-    color: #555555;
+    color: #555555; /* Inactive grey */
 }
 
-QLabel#presetIndicatorActive {
-    font-size: 12px;
-    color: #aaaaaa;
+QLabel#lightPresetIndicatorActive {
+    color: #e5a01a; /* 3ds Max active gold */
 }
 
-QLabel#resolutionLabel {
-    font-size: 10px;
-    color: #888888;
+QLabel#lmixPresetIndicatorActive {
+    color: #4f729b; /* 3ds Max active steel blue */
 }
 
 /* --- Camera Card Frame --- */
 QFrame#cameraCard {
-    background-color: #303030;
-    border: 1px solid #3a3a3a;
-    border-radius: 2px;
-    margin: 2px 4px;
-    padding: 4px;
+    background-color: #2a2a2a;
+    border: 1px solid #363636;
+    border-radius: 6px;
+    margin: 4px 6px; /* Reduced vertical from 6px to 4px */
+    padding: 0;
 }
 
 QFrame#cameraCard:hover {
-    background-color: #363636;
-    border-color: #4a4a4a;
+    background-color: #313131;
+    border-color: #4f729b; /* 3ds Max blue on hover */
 }
 
 QFrame#cameraCardActive {
-    background-color: #3a3a3a;
-    border: 1px solid #606060;
-    border-radius: 2px;
-    margin: 2px 4px;
-    padding: 4px;
+    background-color: #2e2e2e;
+    border: 2px solid #4f729b; /* 3ds Max active selection blue */
+    border-radius: 6px;
+    margin: 4px 6px; /* Reduced vertical from 6px to 4px */
+    padding: 0;
+}
+
+/* --- Thumbnail Label --- */
+QLabel#thumbnailLabel {
+    background-color: #000000;
+    border-radius: 4px;
 }
 
 /* --- Toolbar Panel --- */
 QFrame#toolbarPanel {
-    background-color: #282828;
-    border-top: 1px solid #3a3a3a;
-    padding: 6px 8px;
+    background-color: #242424;
+    border-top: 1px solid #363636;
+    padding: 8px;
 }
 
-/* --- Buttons (standard) --- */
+/* --- Buttons --- */
 QPushButton {
-    background-color: #3a3a3a;
-    border: 1px solid #4a4a4a;
-    border-radius: 2px;
-    padding: 4px 10px;
-    color: #bbbbbb;
-    min-height: 28px;
+    background-color: #303030;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #cccccc;
+    font-size: 13px;
+    font-weight: bold;
+    min-height: 24px;
+    outline: none; /* Disable focus outline dotted rect */
 }
 
 QPushButton:hover {
-    background-color: #444444;
-    border-color: #555555;
-    color: #dddddd;
+    background-color: #383838;
+    border-color: #4a4a4a;
+    color: #ffffff;
 }
 
 QPushButton:pressed {
-    background-color: #2a2a2a;
-}
-
-QPushButton:checked {
-    background-color: #4f4f4f;
-    border-color: #666666;
-    color: #e0e0e0;
+    background-color: #1e1e1e;
+    color: #888888;
+    border-color: #2b2b2b;
 }
 
 QPushButton:disabled {
-    background-color: #2e2e2e;
-    border-color: #383838;
+    background-color: #252525;
+    border-color: #2d2d2d;
     color: #555555;
 }
 
-/* --- Preset buttons (Light, LMix) --- */
-QPushButton#presetButton {
-    min-width: 60px;
-    padding: 4px 8px;
+QPushButton:focus {
+    outline: none; /* Disable focus outline dotted rect */
 }
 
-QPushButton#presetButton:checked {
-    background-color: #4f4f4f;
-    border-color: #666666;
-    color: #e0e0e0;
-}
+/* --- Specific Button Styling --- */
 
-/* --- Swap & Refresh buttons --- */
-QPushButton#swapButton,
-QPushButton#refreshButton {
-    min-width: 32px;
-    max-width: 32px;
-    min-height: 28px;
-    padding: 2px;
-    font-size: 16px;
-    font-weight: bold;
-}
-
-/* --- Lock button --- */
+/* Lock Button */
 QPushButton#lockButton {
+    font-size: 24px; /* Increased to match swap button */
     min-width: 28px;
-    max-width: 28px;
-    min-height: 28px;
-    max-height: 28px;
-    padding: 0;
-    font-size: 14px;
+}
+QPushButton#lockButton:checked {
+    background-color: #303030;
+    border-color: #4a4a4a;
+    color: #e5a01a;
+}
+QPushButton#lockButton:checked:pressed {
+    background-color: #1e1e1e;
+    color: #888888;
+    border-color: #2b2b2b;
 }
 
-/* --- Overlay mini-buttons [1] [2] [3] [4] --- */
+/* Swap Button */
+QPushButton#swapButton {
+    font-size: 24px;
+}
+QPushButton#swapButton:pressed {
+    background-color: #1e1e1e;
+    color: #888888;
+    border-color: #2b2b2b;
+}
+
+/* Preset Buttons - Grey background with gold text when active */
+QPushButton#lightPresetButton:checked,
+QPushButton#lmixPresetButton:checked {
+    background-color: #303030;
+    border-color: #4a4a4a;
+    color: #e5a01a;
+}
+
+/* Provide tactile press feedback even when checked */
+QPushButton#lightPresetButton:pressed,
+QPushButton#lightPresetButton:checked:pressed,
+QPushButton#lmixPresetButton:pressed,
+QPushButton#lmixPresetButton:checked:pressed {
+    background-color: #1e1e1e;
+    color: #888888;
+    border-color: #2b2b2b;
+}
+
+/* Thin Overlay Buttons */
 QPushButton#overlayButton {
-    min-width: 28px;
-    max-width: 28px;
-    min-height: 28px;
-    max-height: 28px;
-    padding: 0;
-    font-size: 13px;
-    font-weight: bold;
+    background-color: #1e1e1e;
+    border: 1px solid #2d2d2d;
     border-radius: 2px;
+    min-height: 18px;
+    max-height: 18px;
+    padding: 0;
+}
+
+QPushButton#overlayButton:hover {
+    background-color: #252525;
+    border-color: #3d3d3d;
 }
 
 QPushButton#overlayButton:checked {
-    background-color: #4f4f4f;
-    border-color: #666666;
-    color: #e0e0e0;
+    background-color: #4f729b; /* 3ds Max blue when active */
+    border-color: #5c82b1;
 }
 
-/* --- Resolution spin boxes --- */
+QPushButton#overlayButton:pressed,
+QPushButton#overlayButton:checked:pressed {
+    background-color: #1a1a1a;
+    border-color: #252525;
+}
+
+/* --- Resolution Spin Boxes --- */
 QSpinBox {
-    background-color: #333333;
-    border: 1px solid #4a4a4a;
-    border-radius: 2px;
-    padding: 2px 4px;
-    color: #cccccc;
-    min-height: 28px;
-    min-width: 65px;
+    background-color: #1a1a1a;
+    border: 1px solid #363636;
+    border-radius: 4px;
+    padding: 2px 6px;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: bold;
+    min-height: 24px;
 }
 
 QSpinBox:focus {
-    border-color: #666666;
+    border-color: #4f729b; /* 3ds Max blue focus border */
 }
 
 QSpinBox::up-button,
@@ -222,33 +280,10 @@ QSpinBox::down-button {
     border: none;
 }
 
-/* --- Separator line --- */
+/* --- Separator --- */
 QFrame#separator {
-    background-color: #3a3a3a;
+    background-color: #363636;
     max-height: 1px;
     min-height: 1px;
-    margin: 2px 6px;
-}
-
-/* --- Context Menu --- */
-QMenu {
-    background-color: #333333;
-    border: 1px solid #4a4a4a;
-    padding: 4px 0;
-}
-
-QMenu::item {
-    padding: 5px 20px;
-    color: #cccccc;
-}
-
-QMenu::item:selected {
-    background-color: #4a4a4a;
-    color: #ffffff;
-}
-
-QMenu::separator {
-    height: 1px;
-    background: #4a4a4a;
-    margin: 3px 8px;
+    margin: 4px 2px;
 }
