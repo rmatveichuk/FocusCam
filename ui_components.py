@@ -242,6 +242,11 @@ class FocusUI(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
 
+        # Debounce timer to prevent viewport freezes during fast typing
+        self._res_debounce_timer = QTimer(self)
+        self._res_debounce_timer.setSingleShot(True)
+        self._res_debounce_timer.timeout.connect(self._apply_debounced_resolution)
+
         # -- Camera List --
         self.cam_list = CameraListWidget()
         self.cam_list.setMinimumWidth(320)
@@ -563,6 +568,10 @@ class FocusUI(QWidget):
             self.h_spin.setValue(max(1, new_h))
             self.h_spin.blockSignals(False)
             self._is_syncing_res = False
+        
+        # Debounce the resolution update
+        if self.active_camera_node:
+            self._res_debounce_timer.start(500)
 
     def _on_h_value_changed(self, val):
         if self._is_syncing_res:
@@ -575,7 +584,16 @@ class FocusUI(QWidget):
             self.w_spin.blockSignals(False)
             self._is_syncing_res = False
 
+        # Debounce the resolution update
+        if self.active_camera_node:
+            self._res_debounce_timer.start(500)
+
     def _on_res_edited(self, *args):
+        # Apply immediately and stop debounce timer
+        self._res_debounce_timer.stop()
+        self._apply_debounced_resolution()
+
+    def _apply_debounced_resolution(self):
         if not self.active_camera_node:
             return
         w = self.w_spin.value()

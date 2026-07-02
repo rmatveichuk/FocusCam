@@ -400,6 +400,7 @@ def apply_resolution(width: int, height: int) -> None:
     try:
         rt.renderWidth = width
         rt.renderHeight = height
+        rt.displaySafeFrames = True
     except Exception:
         pass
 
@@ -513,6 +514,10 @@ def switch_to_camera(camera_node) -> None:
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write("  No camera viewports. Set camera in active viewport.\n")
                 
+        try:
+            rt.displaySafeFrames = True
+        except:
+            pass
         rt.forceCompleteRedraw()
         with open(log_path, "a", encoding="utf-8") as f:
             f.write("--- switch_to_camera success ---\n\n")
