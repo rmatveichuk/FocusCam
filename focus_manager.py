@@ -421,9 +421,8 @@ class FocusManagerWindow(QDockWidget):
         super().closeEvent(event)
 
 
-# Global references to keep window alive and track state in 3ds Max
+# Global references to keep window alive in 3ds Max
 _focus_window = None
-_focus_window_shown = False  # Explicit flag — reliable toggle state for docked QDockWidgets
 
 
 def _cleanup_orphaned_windows(max_main_window=None):
@@ -462,11 +461,9 @@ def _cleanup_orphaned_windows(max_main_window=None):
 def show_focus_window():
     """
     Launch the Focus UI in 3ds Max.
-    Toggle: first press = show, second press = hide, third = show again, etc.
-    Uses an explicit flag because QDockWidget.isHidden()/isVisible() are
-    unreliable when the widget is docked inside 3ds Max's main window.
+    Toggle: first press = show, second press = close, third = show again, etc.
     """
-    global _focus_window, _focus_window_shown
+    global _focus_window
 
     import qtmax
     from PySide6.QtWidgets import QApplication
@@ -479,19 +476,17 @@ def show_focus_window():
         except RuntimeError:
             # Window was closed via the X button — C++ object is gone
             _focus_window = None
-            _focus_window_shown = False
 
     # -- If globals were reset (e.g. after MZP reinstall), clean up orphaned windows first --
     if _focus_window is None:
         _cleanup_orphaned_windows(max_main_window)
 
-    # -- TOGGLE: if the window exists and was shown, hide it --
-    if _focus_window is not None and _focus_window_shown:
+    # -- TOGGLE: if the window exists and is visible, close it --
+    if _focus_window is not None and _focus_window.isVisible():
         try:
-            _focus_window.hide()
+            _focus_window.close()
         except Exception:
             pass
-        _focus_window_shown = False
         return
 
     # -- CREATE: build window if it doesn't exist yet --
@@ -507,7 +502,6 @@ def show_focus_window():
 
     _focus_window.show()
     _focus_window.raise_()
-    _focus_window_shown = True
 
 
 if __name__ == "__main__":
