@@ -22,7 +22,7 @@ def build_mzp():
     mcr_content = """macroScript FocusCam
 category:"RM scripts"
 buttonText:"FocusCam"
-tooltip:"FocusCam Camera & Light Manager"
+tooltip:"FocusCam"
 iconName:"Icon"
 (
     on execute do (
