@@ -379,6 +379,25 @@ def get_effective_resolution(camera_node):
         return 1920, 1080
 
 
+def show_safe_frame_only_on_camera_views() -> None:
+    """Enable Safe Frames display only on viewports of type #view_camera."""
+    if rt is None:
+        return
+    try:
+        num_views = int(rt.viewport.numViews)
+        saved_active = int(rt.viewport.activeViewport)
+        for i in range(1, num_views + 1):
+            try:
+                rt.viewport.activeViewport = i
+                if str(rt.viewport.getType()) == "view_camera":
+                    rt.displaySafeFrames = True
+            except Exception:
+                pass
+        rt.viewport.activeViewport = saved_active
+    except Exception:
+        pass
+
+
 def apply_resolution(width: int, height: int) -> None:
     """Set the active 3ds Max render resolution."""
     if rt is None:
@@ -400,9 +419,10 @@ def apply_resolution(width: int, height: int) -> None:
     try:
         rt.renderWidth = width
         rt.renderHeight = height
-        rt.displaySafeFrames = True
     except Exception:
         pass
+
+    show_safe_frame_only_on_camera_views()
 
     # Refresh Render Setup dialog UI if it is open
     try:
@@ -514,10 +534,7 @@ def switch_to_camera(camera_node) -> None:
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write("  No camera viewports. Set camera in active viewport.\n")
                 
-        try:
-            rt.displaySafeFrames = True
-        except:
-            pass
+        show_safe_frame_only_on_camera_views()
         rt.forceCompleteRedraw()
         with open(log_path, "a", encoding="utf-8") as f:
             f.write("--- switch_to_camera success ---\n\n")
