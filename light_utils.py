@@ -486,44 +486,30 @@ def _apply_corona_lightmix(camera_node):
 # ── V-Ray helpers ────────────────────────────────────────────────────────────
 
 def _save_vray_lightmix(camera_node):
-    """Read V-Ray LightMix data from ``renderers.current`` properties and
-    store it in the camera CA.
-    """
+    """Read V-Ray LightMix data (VFB layers JSON) and store it in the camera CA."""
+    if rt is None:
+        return False
     try:
-        renderer = rt.renderers.current
-        intensities_src = renderer.colorMap_lightmixIntensities
-        colors_src = renderer.colorMap_lightmixColors
+        mgr_array = rt.vfbControl(rt.Name("getLayerMgr"))
+        if mgr_array is None or int(mgr_array.count) == 0:
+            return False
+        mgr = mgr_array[0]
+        json_str = mgr.saveLayersToJSON()
     except Exception:
         return False
-
-    intensities = rt.Array()
-    colors = rt.Array()
-
-    if intensities_src is not None:
-        count = int(intensities_src.count) if hasattr(intensities_src, "count") else 0
-        for i in range(1, count + 1):
-            try:
-                rt.append(intensities, float(intensities_src[i]))
-            except Exception:
-                rt.append(intensities, 1.0)
-
-    if colors_src is not None:
-        count = int(colors_src.count) if hasattr(colors_src, "count") else 0
-        for i in range(1, count + 1):
-            try:
-                c = colors_src[i]
-                c_val = rt.Color(float(c.r), float(c.g), float(c.b))
-                rt.append(colors, c_val)
-            except Exception:
-                rt.append(colors, rt.Color(255, 255, 255))
 
     try:
         ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
         if ca is not None:
-            ca.lmChannels = rt.Array()  # V-Ray has no channel names
-            ca.lmIntensities = intensities
-            ca.lmColors = colors
-            ca.lmStates = rt.Array()  # V-Ray has no per-channel enable
+            channels = rt.Array()
+            rt.append(channels, "vray_json")
+            rt.append(channels, str(json_str))
+            ca.lmChannels = channels
+            
+            # Clear other properties to not confuse with Corona/other
+            ca.lmIntensities = rt.Array()
+            ca.lmColors = rt.Array()
+            ca.lmStates = rt.Array()
             ca.hasMixPreset = True
             return True
     except Exception:
@@ -532,47 +518,38 @@ def _save_vray_lightmix(camera_node):
 
 
 def _apply_vray_lightmix(camera_node):
-    """Restore V-Ray LightMix values from the camera's CA back to the renderer."""
+    """Restore V-Ray LightMix values from the camera's CA back to the VFB."""
+    if rt is None:
+        return False
     try:
         ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
         if ca is None or not ca.hasMixPreset:
             return False
             
-        intensities = ca.lmIntensities
-        colors = ca.lmColors
+        channels = ca.lmChannels
+        if channels is None or int(channels.count) < 2:
+            return False
+            
+        flag = str(channels[0])
+        if flag != "vray_json":
+            return False
+            
+        json_str = str(channels[1])
     except Exception:
         return False
 
-    if intensities is None or colors is None:
-        return False
-
     try:
-        renderer = rt.renderers.current
-    except Exception:
-        return False
-
-    int_arr = rt.Array()
-    col_arr = rt.Array()
-    int_count = int(intensities.count) if hasattr(intensities, "count") else 0
-    for i in range(1, int_count + 1):
-        try:
-            rt.append(int_arr, float(intensities[i]))
-        except Exception:
-            rt.append(int_arr, 1.0)
-
-    col_count = int(colors.count) if hasattr(colors, "count") else 0
-    for i in range(1, col_count + 1):
-        try:
-            c = colors[i]
-            c_val = rt.Color(float(c.r), float(c.g), float(c.b))
-            rt.append(col_arr, c_val)
-        except Exception:
-            rt.append(col_arr, rt.Color(255, 255, 255))
-
-    try:
-        renderer.colorMap_lightmixIntensities = int_arr
-        renderer.colorMap_lightmixColors = col_arr
-        return True
+        mgr_array = rt.vfbControl(rt.Name("getLayerMgr"))
+        if mgr_array is None or int(mgr_array.count) == 0:
+            return False
+        mgr = mgr_array[0]
+        res = bool(mgr.loadLayersFromJSON(json_str))
+        if res and hasattr(rt, "vrayIsRenderingIPR") and int(rt.vrayIsRenderingIPR()) > 0:
+            try:
+                rt.vrayUpdateIPR()
+            except Exception:
+                pass
+        return res
     except Exception:
         return False
 
@@ -584,6 +561,7 @@ def save_lightmix_preset(camera_node):
     if rt is None or camera_node is None:
         return
 
+    setup_lightmix_elements()
     camera_utils.ensure_custom_attributes(camera_node)
 
     renderer_type = detect_renderer()
@@ -600,19 +578,22 @@ def apply_lightmix_preset(camera_node):
     if not has_lightmix_preset(camera_node):
         return
 
+    setup_lightmix_elements()
     current = detect_renderer()
     
     try:
         ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
         if ca is None:
             return
-        is_corona_preset = int(ca.lmChannels.count) > 0
+        is_vray_preset = False
+        if int(ca.lmChannels.count) > 0:
+            is_vray_preset = (str(ca.lmChannels[0]) == "vray_json")
     except Exception:
-        is_corona_preset = False
+        is_vray_preset = False
 
-    if is_corona_preset and current == "corona":
+    if not is_vray_preset and current == "corona":
         _apply_corona_lightmix(camera_node)
-    elif not is_corona_preset and current == "vray":
+    elif is_vray_preset and current == "vray":
         _apply_vray_lightmix(camera_node)
 
 

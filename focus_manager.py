@@ -25,6 +25,28 @@ from . import camera_utils
 from . import light_utils
 from . import overlay_utils
 from .ui_components import FocusUI
+import contextlib
+
+@contextlib.contextmanager
+def vray_ipr_cooldown():
+    """
+    Context manager to stop V-Ray IPR before an operation and restart it after,
+    ensuring that V-Ray updates its aspect ratio and rendering camera correctly.
+    """
+    vray_ipr_was_running = False
+    if rt and hasattr(rt, "vrayIsRenderingIPR"):
+        try:
+            if int(rt.vrayIsRenderingIPR()) > 0:
+                vray_ipr_was_running = True
+                rt.vrayStopIPR()
+        except Exception:
+            pass
+    yield
+    if vray_ipr_was_running and rt and hasattr(rt, "vrayStartIPR"):
+        try:
+            rt.vrayStartIPR()
+        except Exception:
+            pass
 
 
 class FocusManagerWindow(QDockWidget):
@@ -62,8 +84,8 @@ class FocusManagerWindow(QDockWidget):
         self.setObjectName("FocusDockWidget")
         self.setWindowTitle("Focus Camera & Light Manager")
         self.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-        self.setMinimumWidth(330)
-        self.resize(340, 650)
+        self.setMinimumWidth(352)
+        self.setMaximumWidth(352)
         
         # Window Icon
         icon_path = os.path.join(os.path.dirname(__file__), "Icon.svg")
@@ -221,38 +243,58 @@ class FocusManagerWindow(QDockWidget):
             except Exception as e:
                 pass
 
-        # 1. Apply Resolution (if any) - Applied before switching camera to prevent Safe Frame cropping/zoom jump
-        w, h, has_res = camera_utils.load_resolution(camera_node)
-        if has_res:
-            camera_utils.apply_resolution(w, h)
-        else:
-            # If camera has no resolution, save the current global renderer settings to it
-            if rt:
-                cur_w, cur_h = rt.renderWidth, rt.renderHeight
-                camera_utils.save_resolution(camera_node, cur_w, cur_h)
-                # Update UI spinboxes to reflect the newly saved resolution
-                self.ui.select_camera(camera_node) 
+        # Check if V-Ray IPR is active before entering the cooldown context
+        is_vray_ipr = False
+        if rt and hasattr(rt, "vrayIsRenderingIPR"):
+            try:
+                is_vray_ipr = (int(rt.vrayIsRenderingIPR()) > 0)
+            except Exception:
+                pass
 
-        # 2. Switch Viewport
-        camera_utils.switch_to_camera(camera_node)
+        with vray_ipr_cooldown():
+            # 1. Apply Resolution (if any) - Applied before switching camera to prevent Safe Frame cropping/zoom jump
+            w, h, has_res = camera_utils.load_resolution(camera_node)
+            if has_res:
+                camera_utils.apply_resolution(w, h)
+            else:
+                # If camera has no resolution, save the current global renderer settings to it
+                if rt:
+                    cur_w, cur_h = rt.renderWidth, rt.renderHeight
+                    camera_utils.save_resolution(camera_node, cur_w, cur_h)
+                    # Update UI spinboxes to reflect the newly saved resolution
+                    self.ui.select_camera(camera_node) 
+
+            # 2. Switch Viewport
+            camera_utils.switch_to_camera(camera_node)
+                    
+            # 3. Update overlays targeting
+            self.overlay_mgr.set_target_camera(camera_node)
+            
+            # 4. Apply Physical Light Preset (if any)
+            if light_utils.has_light_preset(camera_node):
+                light_utils.apply_light_preset(camera_node)
                 
-        # 3. Update overlays targeting
-        self.overlay_mgr.set_target_camera(camera_node)
-        
-        # 4. Apply Physical Light Preset (if any)
-        if light_utils.has_light_preset(camera_node):
-            light_utils.apply_light_preset(camera_node)
-            
-        # 5. Apply LightMix Preset (if any)
-        if light_utils.has_lightmix_preset(camera_node):
-            light_utils.apply_lightmix_preset(camera_node)
-            
-        if rt:
-            rt.forceCompleteRedraw()
-            
-        # Trigger a delayed high-quality thumbnail refresh for the selected camera.
-        # Delay allows the viewport to completely render light/resolution updates first.
-        QTimer.singleShot(250, lambda: self.on_refresh_thumbnail(camera_node.name))
+            # 5. Apply LightMix Preset (if not deferred for V-Ray IPR)
+            if not is_vray_ipr and light_utils.has_lightmix_preset(camera_node):
+                light_utils.apply_lightmix_preset(camera_node)
+                
+            if rt:
+                rt.forceCompleteRedraw()
+                
+            # Trigger a delayed high-quality thumbnail refresh for the selected camera (only if not deferred)
+            if not is_vray_ipr:
+                QTimer.singleShot(250, lambda: self.on_refresh_thumbnail(camera_node.name))
+
+        # If V-Ray IPR was active, we must apply the preset with a delay to let the IPR session initialize first
+        if is_vray_ipr:
+            QTimer.singleShot(800, lambda: self._apply_delayed_lightmix(camera_node))
+
+    def _apply_delayed_lightmix(self, camera_node):
+        """Delayed application of V-Ray LightMix preset to prevent IPR initialization overwrite."""
+        if camera_node and camera_utils.is_node_valid(camera_node):
+            if light_utils.has_lightmix_preset(camera_node):
+                light_utils.apply_lightmix_preset(camera_node)
+                QTimer.singleShot(250, lambda: self.on_refresh_thumbnail(camera_node.name))
 
     def on_save_light(self):
         camera_node = self.ui.active_camera_node
@@ -289,17 +331,19 @@ class FocusManagerWindow(QDockWidget):
     def on_res_changed(self, w: int, h: int):
         camera_node = self.ui.active_camera_node
         if camera_node and camera_utils.is_node_valid(camera_node):
-            camera_utils.save_resolution(camera_node, w, h)
-            camera_utils.apply_resolution(w, h)
-            if rt:
-                rt.forceCompleteRedraw()
+            with vray_ipr_cooldown():
+                camera_utils.save_resolution(camera_node, w, h)
+                camera_utils.apply_resolution(w, h)
+                if rt:
+                    rt.forceCompleteRedraw()
 
     def on_res_swapped(self):
         camera_node = self.ui.active_camera_node
         if camera_node and camera_utils.is_node_valid(camera_node):
-            camera_utils.swap_resolution(camera_node)
-            if rt:
-                rt.forceCompleteRedraw()
+            with vray_ipr_cooldown():
+                camera_utils.swap_resolution(camera_node)
+                if rt:
+                    rt.forceCompleteRedraw()
 
     def _sync_renderer_resolution(self):
         """Poll 3ds Max Render Setup and active viewport camera, update UI and CA if they differ."""

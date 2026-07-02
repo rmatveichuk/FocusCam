@@ -563,7 +563,6 @@ class FocusUI(QWidget):
             self.h_spin.setValue(max(1, new_h))
             self.h_spin.blockSignals(False)
             self._is_syncing_res = False
-        self._on_res_edited()
 
     def _on_h_value_changed(self, val):
         if self._is_syncing_res:
@@ -575,7 +574,6 @@ class FocusUI(QWidget):
             self.w_spin.setValue(max(1, new_w))
             self.w_spin.blockSignals(False)
             self._is_syncing_res = False
-        self._on_res_edited()
 
     def _on_res_edited(self, *args):
         if not self.active_camera_node:

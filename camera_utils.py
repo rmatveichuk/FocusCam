@@ -384,6 +384,12 @@ def apply_resolution(width: int, height: int) -> None:
     if rt is None:
         return
     
+    try:
+        if int(rt.renderWidth) == width and int(rt.renderHeight) == height:
+            return
+    except Exception:
+        pass
+    
     # Set the aspect ratio first to prevent padlock auto-scaling distortion
     try:
         if height > 0:
