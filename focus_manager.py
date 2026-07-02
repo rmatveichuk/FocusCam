@@ -120,13 +120,10 @@ class FocusCamWindow(QDockWidget):
         self._thumb_queue = []
         
         self.refresh_cameras()
-        self.overlay_mgr.register_callback()
-        register_scene_callbacks()
         
         # Resolution synchronization timer (polls 3ds Max Render Setup every 500ms)
         self._res_sync_timer = QTimer(self)
         self._res_sync_timer.timeout.connect(self._sync_renderer_resolution)
-        self._res_sync_timer.start(500)
 
     def _apply_stylesheet(self):
         style_path = os.path.join(os.path.dirname(__file__), "style.qss")
@@ -416,6 +413,13 @@ class FocusCamWindow(QDockWidget):
                 self.ui.h_spin.blockSignals(False)
         except Exception:
             pass
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.overlay_mgr.register_callback()
+        register_scene_callbacks()
+        if not self._res_sync_timer.isActive():
+            self._res_sync_timer.start(500)
 
     def closeEvent(self, event):
         """Clean up callbacks when the window is closed."""
