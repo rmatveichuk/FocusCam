@@ -1,17 +1,17 @@
-name "RM Focus"
+name "FocusCam"
 version 1.0
 
 run "PreInstall.ms"
 
-copy "RM_Focus.mcr" to "$userMacros\"
-copy "focus_manager.py" to "$userScripts\Focus\"
-copy "camera_utils.py" to "$userScripts\Focus\"
-copy "light_utils.py" to "$userScripts\Focus\"
-copy "overlay_utils.py" to "$userScripts\Focus\"
-copy "ui_components.py" to "$userScripts\Focus\"
-copy "__init__.py" to "$userScripts\Focus\"
-copy "style.qss" to "$userScripts\Focus\"
-copy "Icon.svg" to "$userScripts\Focus\"
+copy "FocusCam.mcr" to "$userMacros\"
+copy "focus_manager.py" to "$userScripts\FocusCam\"
+copy "camera_utils.py" to "$userScripts\FocusCam\"
+copy "light_utils.py" to "$userScripts\FocusCam\"
+copy "overlay_utils.py" to "$userScripts\FocusCam\"
+copy "ui_components.py" to "$userScripts\FocusCam\"
+copy "__init__.py" to "$userScripts\FocusCam\"
+copy "style.qss" to "$userScripts\FocusCam\"
+copy "Icon.svg" to "$userScripts\FocusCam\"
 
 copy "Icon.svg" to "$userIcons\Dark\"
 copy "Icon.svg" to "$userIcons\Light\"

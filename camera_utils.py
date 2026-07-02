@@ -278,7 +278,7 @@ def grab_viewport_thumbnail(camera_node, width: int = 200, height: int = 112):
 
     finally:
         # -- Restore viewport state ----------------------------------------------
-        log_path = r"C:\Users\RMatv\AppData\Local\Autodesk\3dsMax\2026 - 64bit\ENU\scripts\Focus\debug_log.txt"
+        log_path = os.path.join(os.path.dirname(__file__), "debug_log.txt")
         try:
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"--- grab_viewport_thumbnail restore start for {getattr(camera_node, 'name', 'N/A')} ---\n")
@@ -489,7 +489,7 @@ def switch_to_camera(camera_node) -> None:
     if rt is None or not is_node_valid(camera_node):
         return
 
-    log_path = r"C:\Users\RMatv\AppData\Local\Autodesk\3dsMax\2026 - 64bit\ENU\scripts\Focus\debug_log.txt"
+    log_path = os.path.join(os.path.dirname(__file__), "debug_log.txt")
 
     try:
         num_views = int(rt.viewport.numViews)

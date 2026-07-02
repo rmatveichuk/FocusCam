@@ -49,7 +49,7 @@ def vray_ipr_cooldown():
             pass
 
 
-class FocusManagerWindow(QDockWidget):
+class FocusCamWindow(QDockWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         
@@ -81,8 +81,8 @@ class FocusManagerWindow(QDockWidget):
         except Exception:
             pass
 
-        self.setObjectName("FocusDockWidget")
-        self.setWindowTitle("Focus Camera & Light Manager")
+        self.setObjectName("FocusCamDockWidget")
+        self.setWindowTitle("FocusCam Camera & Light Manager")
         self.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         self.setMinimumWidth(352)
         self.setMaximumWidth(352)
@@ -426,17 +426,19 @@ _focus_window = None
 
 
 def _cleanup_orphaned_windows(max_main_window=None):
-    """Find and destroy ALL FocusDockWidget instances not tracked by our global.
+    """Find and destroy ALL FocusCam/Focus dock widget instances not tracked by our global.
     Needed after reinstall (MZP overwrites module → globals reset → old window orphaned)."""
     from PySide6.QtWidgets import QApplication, QDockWidget
     to_close = []
     try:
         for widget in QApplication.topLevelWidgets():
             try:
-                if isinstance(widget, QDockWidget) and widget.objectName() == "FocusDockWidget":
+                if isinstance(widget, QDockWidget) and widget.objectName() in ("FocusDockWidget", "FocusCamDockWidget"):
                     to_close.append(widget)
                 children = widget.findChildren(QDockWidget, "FocusDockWidget")
                 to_close.extend(children)
+                children_cam = widget.findChildren(QDockWidget, "FocusCamDockWidget")
+                to_close.extend(children_cam)
             except (RuntimeError, ReferenceError):
                 pass
     except Exception:
@@ -492,7 +494,7 @@ def show_focus_window():
     # -- CREATE: build window if it doesn't exist yet --
     is_new = False
     if _focus_window is None:
-        _focus_window = FocusManagerWindow(parent=max_main_window)
+        _focus_window = FocusCamWindow(parent=max_main_window)
         is_new = True
 
     # -- SHOW: dock and display --
