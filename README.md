@@ -36,3 +36,7 @@
 * **Autodesk 3ds Max** (pymxs, MAXScript)
 * **Python 3**
 * **PySide6** (Qt for Python)
+
+## 👤 Author & Contacts
+* **Developer / Channel**: [@refer_manage](https://t.me/refer_manage)
+* **GitHub Repository**: [FocusCam](https://github.com/rmatveichuk/FocusCam)

@@ -1,3 +1,7 @@
+# Author: Roman Matveichuk
+# Telegram: https://t.me/refer_manage
+# GitHub: https://github.com/rmatveichuk/FocusCam
+
 """
 camera_utils.py — Camera-related operations for the Focus plugin (3ds Max 2025+).
 

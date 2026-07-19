@@ -1,3 +1,7 @@
+# Author: Roman Matveichuk
+# Telegram: https://t.me/refer_manage
+# GitHub: https://github.com/rmatveichuk/FocusCam
+
 """
 overlay_utils.py – Viewport composition grid overlays for 3ds Max.
 

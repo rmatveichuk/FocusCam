@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# Author: Roman Matveichuk
+# Telegram: https://t.me/refer_manage
+# GitHub: https://github.com/rmatveichuk/FocusCam
 """
 Focus – Light Utilities
 ~~~~~~~~~~~~~~~~~~~~~~~~
