@@ -357,13 +357,50 @@ def _get_lightmix_preset_path(camera_node):
     
     scene_path = rt.maxFilePath
     if scene_path and os.path.exists(scene_path):
-        presets_dir = os.path.join(scene_path, "Focus_LightMix")
+        # 1. Search for existing file in subfolders (up to 2 levels deep)
+        found_path = None
+        for root, dirs, files in os.walk(scene_path):
+            # Limit depth to 2 levels to keep it fast
+            depth = root[len(scene_path):].count(os.sep)
+            if depth > 2:
+                dirs[:] = []  # stop recursion for this branch
+                continue
+            if "Focus_LightMix" in dirs:
+                potential_path = os.path.join(root, "Focus_LightMix", filename)
+                if os.path.exists(potential_path):
+                    found_path = potential_path
+                    break
+        
+        if found_path:
+            return found_path
+            
+        # 2. If file not found, check if Focus_LightMix directory exists anywhere in subfolders
+        found_dir = None
+        for root, dirs, files in os.walk(scene_path):
+            depth = root[len(scene_path):].count(os.sep)
+            if depth > 2:
+                dirs[:] = []
+                continue
+            if "Focus_LightMix" in dirs:
+                found_dir = os.path.join(root, "Focus_LightMix")
+                break
+                
+        # 3. Use the found directory, or default to maxFilePath/Focus_LightMix
+        if found_dir:
+            presets_dir = found_dir
+        else:
+            presets_dir = os.path.join(scene_path, "Focus_LightMix")
+            
+        try:
+            os.makedirs(presets_dir, exist_ok=True)
+        except Exception:
+            pass
+            
         target_path = os.path.join(presets_dir, filename)
         
-        # If the file exists in TEMP but not in the scene folder, copy it over
+        # If the file exists in TEMP but not in target_path, copy it over
         if not os.path.exists(target_path) and os.path.exists(temp_path):
             try:
-                os.makedirs(presets_dir, exist_ok=True)
                 import shutil
                 shutil.copy2(temp_path, target_path)
             except Exception:

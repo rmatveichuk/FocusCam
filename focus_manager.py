@@ -432,8 +432,10 @@ class FocusCamWindow(QDockWidget):
         super().closeEvent(event)
 
 
-# Global references to keep window alive in 3ds Max
-_focus_window = None
+# Retrieve or initialize the global window reference in the sys module to survive module purges/reloads
+import sys
+if not hasattr(sys, "_focus_window"):
+    sys._focus_window = None
 
 
 def _cleanup_orphaned_windows(max_main_window=None):
@@ -476,55 +478,61 @@ def show_focus_window():
     Launch the Focus UI in 3ds Max.
     Toggle: first press = show, second press = close, third = show again, etc.
     """
-    global _focus_window
-
+    import sys
     import qtmax
-    from PySide6.QtWidgets import QApplication
     max_main_window = qtmax.GetQMaxMainWindow()
 
     # -- Check if the existing window object is still alive --
-    if _focus_window is not None:
+    focus_window = getattr(sys, "_focus_window", None)
+    if focus_window is not None:
         try:
-            _focus_window.objectName()  # Probe: raises RuntimeError if C++ object destroyed
+            focus_window.objectName()  # Probe: raises RuntimeError if C++ object destroyed
         except RuntimeError:
             # Window was closed via the X button — C++ object is gone
-            _focus_window = None
+            focus_window = None
+            sys._focus_window = None
 
     # -- If globals were reset (e.g. after MZP reinstall), clean up orphaned windows first --
-    if _focus_window is None:
+    if focus_window is None:
         _cleanup_orphaned_windows(max_main_window)
 
     # -- TOGGLE: if the window exists and is visible, close it --
-    if _focus_window is not None and _focus_window.isVisible():
+    if focus_window is not None and focus_window.isVisible():
         try:
-            _focus_window.close()
+            focus_window.close()
         except Exception:
             pass
         return
 
     # -- CREATE: build window if it doesn't exist yet --
     is_new = False
-    if _focus_window is None:
-        _focus_window = FocusCamWindow(parent=max_main_window)
+    if focus_window is None:
+        focus_window = FocusCamWindow(parent=max_main_window)
+        sys._focus_window = focus_window
         is_new = True
 
     # -- SHOW: dock and display --
     if max_main_window and is_new:
-        max_main_window.addDockWidget(Qt.LeftDockWidgetArea, _focus_window)
-        _focus_window.setFloating(False)
+        max_main_window.addDockWidget(Qt.LeftDockWidgetArea, focus_window)
+        focus_window.setFloating(False)
 
-    _focus_window.show()
-    _focus_window.raise_()
+    focus_window.show()
+    focus_window.raise_()
 
 
 def register_scene_callbacks():
+    """
+    Register persistent MAXScript callbacks to sync changes.
+    """
     if rt is None:
         return
+    
     mxs = """
     global _FocusCam_SceneCallback
     fn _FocusCam_SceneCallback = (
-        python.execute "import sys; m = sys.modules.get('FocusCam.focus_manager') or sys.modules.get('Focus.focus_manager') or sys.modules.get('focus_manager'); m.refresh_active_window() if m else None"
+        python.Execute "import FocusCam.focus_manager; FocusCam.focus_manager.refresh_active_window()"
     )
+    callbacks.removeScripts id:#FocusCamScene
     callbacks.addScript #filePostOpen "_FocusCam_SceneCallback()" id:#FocusCamScene
     callbacks.addScript #systemPostReset "_FocusCam_SceneCallback()" id:#FocusCamScene
     callbacks.addScript #systemPostNew "_FocusCam_SceneCallback()" id:#FocusCamScene
@@ -539,10 +547,11 @@ def unregister_scene_callbacks():
 
 
 def refresh_active_window():
-    global _focus_window
-    if _focus_window is not None:
+    import sys
+    focus_window = getattr(sys, "_focus_window", None)
+    if focus_window is not None:
         try:
-            _focus_window.refresh_cameras()
+            focus_window.refresh_cameras()
         except Exception:
             pass
 
@@ -550,4 +559,3 @@ def refresh_active_window():
 if __name__ == "__main__":
     # For quick testing within MaxScript editor via `python.executeFile`
     show_focus_window()
-
