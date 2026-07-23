@@ -422,15 +422,18 @@ class OverlayManager:
     # -- drawing ------------------------------------------------------------
 
     def draw_overlays(self) -> None:
-        """Draw all active overlays on the active camera viewport.
+        """Draw all active overlays on the current viewport.
 
         Called automatically by the redraw callback.
         """
         if rt is None or pymxs is None:
             return
+        if self.target_camera_node is None:
+            return
         if not self.active_overlays:
             return
 
+        # ---- Check if active viewport is looking through our camera ------
         try:
             active_vp_camera = rt.viewport.getCamera()
         except Exception:
@@ -439,82 +442,88 @@ class OverlayManager:
         if active_vp_camera is None:
             return
 
-        if self.target_camera_node is not None:
-            try:
-                target_handle = rt.getHandleByAnim(self.target_camera_node)
-                vp_handle = rt.getHandleByAnim(active_vp_camera)
-                if target_handle != vp_handle:
-                    return
-            except Exception:
-                pass
-
+        # Compare by node handle for a reliable identity check
         try:
-            # Retrieve viewport dimensions
+            target_handle = rt.getHandleByAnim(self.target_camera_node)
+            vp_handle = rt.getHandleByAnim(active_vp_camera)
+            if target_handle != vp_handle:
+                return
+        except Exception:
+            return
+
+        # ---- Retrieve viewport dimensions --------------------------------
+        try:
             gw = rt.gw
             vp_width = int(gw.getWinSizeX())
             vp_height = int(gw.getWinSizeY())
+        except Exception:
+            return
 
-            if vp_width <= 0 or vp_height <= 0:
-                return
+        if vp_width <= 0 or vp_height <= 0:
+            return
 
-            # Retrieve render dimensions to compute Safe Frame
+        # ---- Retrieve render dimensions to compute Safe Frame -----------
+        try:
+            render_width = int(rt.renderWidth)
+            render_height = int(rt.renderHeight)
+        except Exception:
+            render_width = vp_width
+            render_height = vp_height
+
+        x, y, w, h = get_safe_frame_rect(vp_width, vp_height, render_width, render_height)
+
+
+        # ---- Set line drawing colour -------------------------------------
+        r, g, b = self.line_color
+        try:
+            rt.execute(
+                "gw.setColor #line (color {r} {g} {b})".format(r=r, g=g, b=b)
+            )
+        except Exception:
+            return
+
+        # ---- Draw each active overlay ------------------------------------
+        if OVERLAY_THIRDS in self.active_overlays:
+            self._draw_line_segments(calc_thirds(x, y, w, h))
+
+        if OVERLAY_GOLDEN in self.active_overlays:
+            self._draw_line_segments(calc_golden_ratio(x, y, w, h))
+
+        if OVERLAY_DIAGONALS in self.active_overlays:
+            self._draw_line_segments(calc_diagonals(x, y, w, h))
+
+        if OVERLAY_SPIRAL in self.active_overlays:
+            rects, spiral_arcs = _calc_spiral_golden_rects(x, y, w, h)
+            
+            # 1. Draw sub-rectangles in a dimmer color (clr / 2.5)
+            r_dim = int(r / 2.5)
+            g_dim = int(g / 2.5)
+            b_dim = int(b / 2.5)
             try:
-                render_width = int(rt.renderWidth)
-                render_height = int(rt.renderHeight)
-            except Exception:
-                render_width = vp_width
-                render_height = vp_height
-
-            x, y, w, h = get_safe_frame_rect(vp_width, vp_height, render_width, render_height)
-
-            # Set line drawing colour
-            r, g, b = self.line_color
-            try:
-                rt.execute(f"gw.setColor #line (color {r} {g} {b})")
-            except Exception:
-                return
-
-            # Draw each active overlay
-            if OVERLAY_THIRDS in self.active_overlays:
-                self._draw_line_segments(calc_thirds(x, y, w, h))
-
-            if OVERLAY_GOLDEN in self.active_overlays:
-                self._draw_line_segments(calc_golden_ratio(x, y, w, h))
-
-            if OVERLAY_DIAGONALS in self.active_overlays:
-                self._draw_line_segments(calc_diagonals(x, y, w, h))
-
-            if OVERLAY_SPIRAL in self.active_overlays:
-                rects, spiral_arcs = _calc_spiral_golden_rects(x, y, w, h)
-                
-                # 1. Draw sub-rectangles in a dimmer color
-                r_dim = int(r / 2.5)
-                g_dim = int(g / 2.5)
-                b_dim = int(b / 2.5)
-                try:
-                    rt.execute(f"gw.setColor #line (color {r_dim} {g_dim} {b_dim})")
-                except Exception:
-                    pass
-                
-                for r_pts in rects:
-                    self._draw_closed_polyline(r_pts)
-                    
-                # 2. Restore main color for the spiral curve
-                try:
-                    rt.execute(f"gw.setColor #line (color {r} {g} {b})")
-                except Exception:
-                    pass
-                    
-                for arc in spiral_arcs:
-                    self._draw_polyline(arc)
-
-            # Flush GW buffer so the lines appear on screen
-            try:
-                gw.enlargeUpdateRect(rt.Name("whole"))
-                gw.updateScreen()
+                rt.execute(
+                    "gw.setColor #line (color {r} {g} {b})".format(r=r_dim, g=g_dim, b=b_dim)
+                )
             except Exception:
                 pass
+            
+            for r_pts in rects:
+                self._draw_closed_polyline(r_pts)
+                
+            # 2. Restore main color for the spiral curve
+            try:
+                rt.execute(
+                    "gw.setColor #line (color {r} {g} {b})".format(r=r, g=g, b=b)
+                )
+            except Exception:
+                pass
+                
+            for arc in spiral_arcs:
+                self._draw_polyline(arc)
 
+        # Flush GW buffer so the lines appear on screen
+        try:
+            gw.enlargeUpdateRect(rt.Name("whole"))
+            gw.updateScreen()
         except Exception:
             pass
 
