@@ -422,34 +422,35 @@ class OverlayManager:
     # -- drawing ------------------------------------------------------------
 
     def draw_overlays(self) -> None:
-        """Draw all active overlays on the current viewport.
+        """Draw all active overlays on camera viewports.
 
         Called automatically by the redraw callback.
         """
         if rt is None or pymxs is None:
             return
-        if self.target_camera_node is None:
-            return
         if not self.active_overlays:
             return
 
-        # ---- Check if active viewport is looking through our camera ------
+        # ---- Check if current redrawing viewport is a Camera viewport ----
         try:
+            vtype = str(rt.viewport.getType())
             active_vp_camera = rt.viewport.getCamera()
         except Exception:
             return
 
-        if active_vp_camera is None:
+        # Must be a camera viewport (type "view_camera" or has a valid camera node)
+        if vtype != "view_camera" and active_vp_camera is None:
             return
 
-        # Compare by node handle for a reliable identity check
-        try:
-            target_handle = rt.getHandleByAnim(self.target_camera_node)
-            vp_handle = rt.getHandleByAnim(active_vp_camera)
-            if target_handle != vp_handle:
-                return
-        except Exception:
-            return
+        # If a target camera node is set and active_vp_camera exists, verify identity if possible
+        if self.target_camera_node is not None and active_vp_camera is not None:
+            try:
+                target_handle = rt.getHandleByAnim(self.target_camera_node)
+                vp_handle = rt.getHandleByAnim(active_vp_camera)
+                if target_handle != vp_handle:
+                    return
+            except Exception:
+                pass
 
         # ---- Retrieve viewport dimensions --------------------------------
         try:
