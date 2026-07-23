@@ -422,7 +422,7 @@ class OverlayManager:
     # -- drawing ------------------------------------------------------------
 
     def draw_overlays(self) -> None:
-        """Draw all active overlays on camera viewports.
+        """Draw all active overlays on the active camera viewport.
 
         Called automatically by the redraw callback.
         """
@@ -431,32 +431,24 @@ class OverlayManager:
         if not self.active_overlays:
             return
 
-        num_views = int(rt.viewport.numViews)
-        saved_active = int(rt.viewport.activeViewport)
-
-        # If in multi-view layout, find and temporarily target camera viewport
-        camera_target_vp = None
-        if num_views > 1:
-            for i in range(1, num_views + 1):
-                try:
-                    rt.viewport.activeViewport = i
-                    if str(rt.viewport.getType()) == "view_camera":
-                        camera_target_vp = i
-                        break
-                except Exception:
-                    pass
-            if camera_target_vp is not None:
-                rt.viewport.activeViewport = camera_target_vp
-            else:
-                rt.viewport.activeViewport = saved_active
-                return
-        else:
-            if str(rt.viewport.getType()) != "view_camera":
-                return
-
         try:
             active_vp_camera = rt.viewport.getCamera()
+        except Exception:
+            return
 
+        if active_vp_camera is None:
+            return
+
+        if self.target_camera_node is not None:
+            try:
+                target_handle = rt.getHandleByAnim(self.target_camera_node)
+                vp_handle = rt.getHandleByAnim(active_vp_camera)
+                if target_handle != vp_handle:
+                    return
+            except Exception:
+                pass
+
+        try:
             # Retrieve viewport dimensions
             gw = rt.gw
             vp_width = int(gw.getWinSizeX())
@@ -523,12 +515,8 @@ class OverlayManager:
             except Exception:
                 pass
 
-        finally:
-            if num_views > 1 and int(rt.viewport.activeViewport) != saved_active:
-                try:
-                    rt.viewport.activeViewport = saved_active
-                except Exception:
-                    pass
+        except Exception:
+            pass
 
     # -- internal helpers ---------------------------------------------------
 
