@@ -220,18 +220,35 @@ def get_all_cameras() -> list:
 def grab_viewport_thumbnail(camera_node, width: int = 200, height: int = 112):
     """
     Grab a viewport thumbnail through *camera_node* and return a ``QPixmap``.
+    Preserves original viewport state and transform matrix (TM) so Perspective is NEVER corrupted.
     """
     if rt is None or QPixmap is None or not is_node_valid(camera_node):
         return None
 
-    # -- Save current viewport state -----------------------------------------
-    active_vp = rt.viewport.activeViewport
-    
+    orig_active = int(rt.viewport.activeViewport)
+    num_views = int(rt.viewport.numViews)
+    target_vp = orig_active
+
+    # Prefer an existing camera viewport to grab thumbnail
+    for i in range(1, num_views + 1):
+        try:
+            rt.viewport.activeViewport = i
+            if str(rt.viewport.getType()) == "view_camera":
+                target_vp = i
+                break
+        except Exception:
+            pass
+
+    rt.viewport.activeViewport = target_vp
+
     try: prev_type = rt.viewport.getType()
     except Exception: prev_type = None
 
     try: prev_camera = rt.viewport.getCamera()
     except Exception: prev_camera = None
+
+    try: prev_tm = rt.viewport.getTM()
+    except Exception: prev_tm = None
 
     show_flags = {}
     flag_names = ["ShowHelpers", "ShowCameras", "ShowLights", "ShowGrid"]
@@ -282,33 +299,17 @@ def grab_viewport_thumbnail(camera_node, width: int = 200, height: int = 112):
 
     finally:
         # -- Restore viewport state ----------------------------------------------
-        log_path = os.path.join(os.path.dirname(__file__), "debug_log.txt")
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(f"--- grab_viewport_thumbnail restore start for {getattr(camera_node, 'name', 'N/A')} ---\n")
-                f.write(f"  active_vp: {active_vp}, prev_type: {prev_type} ({type(prev_type)}), prev_camera: {getattr(prev_camera, 'name', 'None' if prev_camera is None else str(prev_camera))}\n")
-        except:
-            pass
-
         try:
             if str(prev_type) == "view_camera":
                 if prev_camera is not None and prev_camera != rt.undefined:
                     rt.viewport.setCamera(prev_camera)
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(f"  Restored camera {prev_camera.name} in viewport {rt.viewport.activeViewport}\n")
             else:
                 if prev_type is not None:
                     rt.viewport.setType(prev_type)
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(f"  Restored viewport type {prev_type} in viewport {rt.viewport.activeViewport}\n")
-        except Exception as restore_err:
-            import traceback
-            try:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write("  === Restore failed ===\n")
-                    traceback.print_exc(file=f)
-            except:
-                pass
+                    if prev_tm is not None:
+                        rt.viewport.setTM(prev_tm)
+        except Exception:
+            pass
 
         for flag in flag_names:
             if show_flags.get(flag) is not None:
@@ -317,19 +318,13 @@ def grab_viewport_thumbnail(camera_node, width: int = 200, height: int = 112):
                 try: rt.execute("viewport.{}({})".format(setter, val))
                 except Exception: pass
 
-        try: rt.viewport.activeViewport = active_vp
+        try: rt.viewport.activeViewport = orig_active
         except Exception: pass
 
         # Clean up temp file.
         if tmp_path and os.path.isfile(tmp_path):
             try: os.remove(tmp_path)
             except OSError: pass
-            
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write("--- grab_viewport_thumbnail restore end ---\n\n")
-        except:
-            pass
 
 
 # ===================================================================
@@ -486,10 +481,61 @@ def get_sort_order(camera_node) -> int:
 # 6. Camera Switching
 # ===================================================================
 
+_cached_camera_vp_index = None  # int or None
+_cached_persp_vp_index = None   # int or None
+_last_known_layout = None       # Name or None (e.g. #layout_3vl)
+
+
+def _scan_and_cache_camera_viewport():
+    global _cached_camera_vp_index, _cached_persp_vp_index, _last_known_layout
+    if rt is None:
+        return []
+
+    num_views = int(rt.viewport.numViews)
+    saved_active = int(rt.viewport.activeViewport)
+
+    if num_views > 1:
+        try: _last_known_layout = rt.viewport.getLayout()
+        except Exception: pass
+
+    camera_indices = []
+    persp_indices = []
+    for i in range(1, num_views + 1):
+        try:
+            rt.viewport.activeViewport = i
+            vtype = str(rt.viewport.getType())
+            if vtype == "view_camera":
+                camera_indices.append(i)
+            elif vtype in ("view_persp_user", "view_perspective"):
+                persp_indices.append(i)
+        except Exception:
+            pass
+
+    rt.viewport.activeViewport = saved_active
+
+    if num_views > 1:
+        if camera_indices:
+            _cached_camera_vp_index = camera_indices[0]
+        if persp_indices:
+            _cached_persp_vp_index = persp_indices[0]
+
+    return camera_indices
+
+
 def switch_to_camera(camera_node) -> None:
     """
     Set the viewport camera to *camera_node* using smart viewport selection.
+
+    1. If an existing camera viewport exists in the scene layout, assigns
+       the camera EXCLUSIVELY to that camera viewport.
+    2. Non-camera viewports (Perspective, Top, etc.) are NEVER converted to camera.
+    3. Handles Alt+W maximized viewports:
+       - If a camera viewport is maximized: swaps camera in place.
+       - If Perspective is maximized: immediately updates the background camera viewport
+         (so Interactive Render instantly updates), while preserving Perspective's TM
+         and keeping Perspective maximized!
     """
+    global _cached_camera_vp_index, _cached_persp_vp_index, _last_known_layout
     if rt is None or not is_node_valid(camera_node):
         return
 
@@ -498,51 +544,108 @@ def switch_to_camera(camera_node) -> None:
     try:
         num_views = int(rt.viewport.numViews)
         saved_active = int(rt.viewport.activeViewport)
-        
+        current_type = str(rt.viewport.getType())
+
+        if num_views > 1:
+            try: _last_known_layout = rt.viewport.getLayout()
+            except Exception: pass
+
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"--- switch_to_camera start. active: {saved_active}, total views: {num_views} ---\n")
-            
-        camera_view_indices = []
-        for i in range(1, num_views + 1):
+            f.write(f"--- switch_to_camera start ---\n")
+            f.write(f"  numViews={num_views}, active={saved_active}, type={current_type}, cache_cam={_cached_camera_vp_index}, cache_persp={_cached_persp_vp_index}, layout={_last_known_layout}\n")
+
+        # ============================================================
+        # CASE 1: numViews == 1  (Viewport is MAXIMIZED via Alt+W)
+        # ============================================================
+        if num_views == 1:
+            if current_type == "view_camera":
+                # Current visible viewport IS a camera -> swap camera in place
+                rt.viewport.setCamera(camera_node)
+                show_safe_frame_only_on_camera_views()
+                rt.forceCompleteRedraw()
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write("  [1-view] Swapped camera in active camera viewport.\n")
+                    f.write("--- switch_to_camera success ---\n\n")
+                return
+
+            # Visible viewport is NOT a camera (Perspective).
+            # Save perspective transform matrix so it is NEVER corrupted.
+            try: persp_tm = rt.viewport.getTM()
+            except Exception: persp_tm = None
+
+            # Freeze screen drawing completely to eliminate any visual Alt+W collapse or flickering!
+            try: rt.disableSceneRedraw()
+            except Exception: pass
+
             try:
-                rt.viewport.activeViewport = i
-                vp_type = rt.viewport.getType()
-                vp_type_str = str(vp_type)
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(f"  Viewport {i} type: {vp_type_str} (repr: {repr(vp_type)})\n")
-                if vp_type_str == "view_camera":
-                    camera_view_indices.append(i)
-            except Exception as loop_err:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(f"  Error checking viewport {i}: {loop_err}\n")
-                
-        # Restore active viewport
-        rt.viewport.activeViewport = saved_active
-        
+                # Restore full layout to update VP 2 for Interactive Render (IPR)
+                if _last_known_layout is not None:
+                    try: rt.viewport.setLayout(_last_known_layout)
+                    except Exception: rt.execute("max tool maximize")
+                else:
+                    rt.execute("max tool maximize")
+
+                full_num = int(rt.viewport.numViews)
+                camera_indices = _scan_and_cache_camera_viewport()
+                target_idx = _cached_camera_vp_index if _cached_camera_vp_index and _cached_camera_vp_index <= full_num else (camera_indices[0] if camera_indices else None)
+
+                if target_idx:
+                    rt.viewport.activeViewport = target_idx
+                    rt.viewport.setCamera(camera_node)
+                    show_safe_frame_only_on_camera_views()
+
+                # Target the Perspective viewport index explicitly (default to 3 if not cached)
+                persp_target = _cached_persp_vp_index if _cached_persp_vp_index and _cached_persp_vp_index <= full_num else (full_num if full_num > 1 else saved_active)
+
+                rt.viewport.activeViewport = persp_target
+                if str(rt.viewport.getType()) not in ("view_camera",) and persp_tm is not None:
+                    try: rt.viewport.setTM(persp_tm)
+                    except Exception: pass
+
+                # Re-maximize Perspective cleanly while redraw is suspended
+                rt.execute("max tool maximize")
+            finally:
+                try: rt.enableSceneRedraw()
+                except Exception: pass
+
+            rt.forceCompleteRedraw()
+
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"  Seamlessly updated camera in VP {target_idx} for IPR without Alt+W flicker (Perspective VP {persp_target}).\n")
+                f.write("--- switch_to_camera success ---\n\n")
+            return
+
+        # ============================================================
+        # CASE 2: numViews > 1  (Normal multi-viewport layout)
+        # ============================================================
+        camera_indices = _scan_and_cache_camera_viewport()
+
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"  Camera viewports found: {camera_view_indices}\n")
-            
-        if camera_view_indices:
-            if saved_active in camera_view_indices:
+            f.write(f"  Camera viewports found: {camera_indices}\n")
+
+        if camera_indices:
+            if saved_active in camera_indices:
                 rt.viewport.setCamera(camera_node)
                 with open(log_path, "a", encoding="utf-8") as f:
                     f.write("  Changed camera in active camera viewport.\n")
             else:
-                target_idx = camera_view_indices[0]
+                target_idx = camera_indices[0]
                 rt.viewport.activeViewport = target_idx
                 rt.viewport.setCamera(camera_node)
+                rt.viewport.activeViewport = saved_active
                 with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(f"  Switched active viewport to {target_idx} and set camera.\n")
+                    f.write(f"  Switched to viewport {target_idx} and set camera.\n")
         else:
+            target_idx = saved_active
             rt.viewport.setCamera(camera_node)
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write("  No camera viewports. Set camera in active viewport.\n")
-                
+
         show_safe_frame_only_on_camera_views()
         rt.forceCompleteRedraw()
         with open(log_path, "a", encoding="utf-8") as f:
             f.write("--- switch_to_camera success ---\n\n")
-            
+
     except Exception as e:
         import traceback
         try:
@@ -550,12 +653,6 @@ def switch_to_camera(camera_node) -> None:
                 f.write("=== switch_to_camera FAILED ===\n")
                 traceback.print_exc(file=f)
                 f.write("\n")
-        except:
-            pass
-        # Fallback
-        try:
-            rt.viewport.setCamera(camera_node)
-            rt.forceCompleteRedraw()
         except:
             pass
 
