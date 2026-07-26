@@ -6,8 +6,12 @@
 overlay_utils.py – Viewport composition grid overlays for 3ds Max.
 
 Draws Rule-of-Thirds, Golden-Ratio, Diagonal, and Fibonacci-Spiral guides
-on top of the active camera viewport using the GW (graphics window) API
-through a registered redraw-views callback.
+on top of the camera viewport using a transparent Qt overlay widget
+(``ViewportOverlayWidget``) positioned over the camera viewport window.
+
+The Qt approach replaces the old ``gw.hPolyline`` method which only works
+for the active viewport.  The Qt overlay is viewport-independent and works
+regardless of which viewport is currently active.
 
 Usage:
     from overlay_utils import OverlayManager, OVERLAY_THIRDS, OVERLAY_GOLDEN
@@ -20,6 +24,8 @@ Usage:
 
 from __future__ import annotations
 
+import ctypes
+import ctypes.wintypes as wintypes
 import math
 from typing import List, Optional, Sequence, Tuple
 
@@ -32,6 +38,32 @@ try:
 except ImportError:
     pymxs = None  # type: ignore[assignment]
     rt = None  # type: ignore[assignment]
+
+# ---------------------------------------------------------------------------
+# Qt import guard (PySide6 for 3ds Max 2025+, PySide2 fallback)
+# ---------------------------------------------------------------------------
+try:
+    from PySide6.QtWidgets import QWidget
+    from PySide6.QtCore import Qt, QTimer, QPoint, QPointF
+    from PySide6.QtGui import QPainter, QPen, QColor, QPolygonF
+except ImportError:
+    try:
+        from PySide2.QtWidgets import QWidget  # type: ignore[assignment]
+        from PySide2.QtCore import Qt, QTimer, QPoint, QPointF  # type: ignore[assignment]
+        from PySide2.QtGui import QPainter, QPen, QColor, QPolygonF  # type: ignore[assignment]
+    except ImportError:
+        QWidget = None  # type: ignore[assignment,misc]
+
+# ---------------------------------------------------------------------------
+# Win32 API for viewport HWND geometry (fast, no MAXScript overhead)
+# ---------------------------------------------------------------------------
+_user32 = None
+try:
+    _user32 = ctypes.windll.user32
+    _user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    _user32.GetWindowRect.restype = wintypes.BOOL
+except Exception:
+    pass
 
 # ---------------------------------------------------------------------------
 # Overlay type constants
@@ -202,6 +234,7 @@ def calc_spiral(
             rw = rw / PHI
         elif quadrant == 2:
             rh = rh / PHI
+
 def _calc_spiral_golden_rects(
     x: int,
     y: int,
@@ -314,21 +347,194 @@ def _calc_spiral_golden_rects(
 
 
 # ---------------------------------------------------------------------------
+# Win32 Viewport HWND Helpers
+# ---------------------------------------------------------------------------
+
+def _get_screen_rect(hwnd: int) -> Tuple[int, int, int, int]:
+    """Return (x, y, width, height) in screen coordinates via Win32 GetWindowRect."""
+    if _user32 is None:
+        return (0, 0, 0, 0)
+    rect = wintypes.RECT()
+    _user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    return (rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
+
+
+def _find_camera_viewport_hwnd(camera_name: str) -> Tuple[Optional[int], Optional[Tuple[int, int, int, int]]]:
+    """Find the HWND and screen rect of the viewport Label showing *camera_name*.
+
+    Returns ``(hwnd, (screen_x, screen_y, width, height))`` or ``(None, None)``.
+    """
+    if rt is None:
+        return None, None
+
+    try:
+        max_hwnd = int(rt.windows.getMAXHWND())
+    except Exception:
+        return None, None
+
+    # 1. Find ViewPanel among Max main window children
+    try:
+        children = rt.windows.getChildrenHWND(max_hwnd)
+    except Exception:
+        return None, None
+
+    view_panel_hwnd = None
+    for child in children:
+        try:
+            if str(child[3]) == "ViewPanel":
+                view_panel_hwnd = int(child[0])
+                break
+        except Exception:
+            continue
+    if view_panel_hwnd is None:
+        return None, None
+
+    # 2. Find the Label child whose title contains the camera name
+    try:
+        vp_children = rt.windows.getChildrenHWND(view_panel_hwnd)
+    except Exception:
+        return None, None
+
+    for child in vp_children:
+        try:
+            class_name = str(child[3])
+            title = str(child[4])
+            if class_name == "Label" and camera_name in title:
+                hwnd = int(child[0])
+                screen_rect = _get_screen_rect(hwnd)
+                if screen_rect[2] > 0 and screen_rect[3] > 0:
+                    return hwnd, screen_rect
+        except Exception:
+            continue
+
+    return None, None
+
+
+# ---------------------------------------------------------------------------
+# Qt Viewport Overlay Widget
+# ---------------------------------------------------------------------------
+
+class ViewportOverlayWidget(QWidget):
+    """Transparent, click-through widget that draws composition overlays.
+
+    Positioned over the camera viewport window.  Uses QPainter for
+    antialiased rendering independent of the Nitrous ``gw`` pipeline.
+    """
+
+    def __init__(self, manager: "OverlayManager", parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+
+        self.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.Tool
+            | Qt.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+
+        self._manager: "OverlayManager" = manager
+        self._render_w: int = 1920
+        self._render_h: int = 1080
+
+    # -- public helpers -------------------------------------------------
+
+    def set_render_size(self, w: int, h: int) -> None:
+        """Update render resolution for safe-frame calculation."""
+        if w != self._render_w or h != self._render_h:
+            self._render_w = w
+            self._render_h = h
+            self.update()
+
+    def reposition(self, screen_x: int, screen_y: int, w: int, h: int) -> None:
+        """Move/resize the overlay to cover the given screen rectangle."""
+        parent = self.parentWidget()
+        if parent is not None:
+            local = parent.mapFromGlobal(QPoint(screen_x, screen_y))
+            self.setGeometry(local.x(), local.y(), w, h)
+        else:
+            self.setGeometry(screen_x, screen_y, w, h)
+
+    # -- painting -------------------------------------------------------
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        mgr = self._manager
+        if mgr is None or not mgr.active_overlays:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        vp_w = self.width()
+        vp_h = self.height()
+
+        x, y, sf_w, sf_h = get_safe_frame_rect(
+            vp_w, vp_h, self._render_w, self._render_h
+        )
+
+        r, g, b = mgr.line_color
+        main_color = QColor(r, g, b, 180)
+        main_pen = QPen(main_color, 1.5)
+
+        # ── Line segments (Thirds / Golden / Diagonals) ──────────────
+        painter.setPen(main_pen)
+
+        if OVERLAY_THIRDS in mgr.active_overlays:
+            for seg in calc_thirds(x, y, sf_w, sf_h):
+                painter.drawLine(seg[0], seg[1], seg[2], seg[3])
+
+        if OVERLAY_GOLDEN in mgr.active_overlays:
+            for seg in calc_golden_ratio(x, y, sf_w, sf_h):
+                painter.drawLine(seg[0], seg[1], seg[2], seg[3])
+
+        if OVERLAY_DIAGONALS in mgr.active_overlays:
+            for seg in calc_diagonals(x, y, sf_w, sf_h):
+                painter.drawLine(seg[0], seg[1], seg[2], seg[3])
+
+        # ── Fibonacci Spiral ─────────────────────────────────────────
+        if OVERLAY_SPIRAL in mgr.active_overlays:
+            rects, arcs = _calc_spiral_golden_rects(x, y, sf_w, sf_h)
+
+            # Dimmer colour for subdivision rectangles
+            dim_color = QColor(r // 2, g // 2, b // 2, 120)
+            dim_pen = QPen(dim_color, 1.0)
+            painter.setPen(dim_pen)
+
+            for rect_pts in rects:
+                if len(rect_pts) >= 2:
+                    poly = QPolygonF([QPointF(float(p[0]), float(p[1])) for p in rect_pts])
+                    poly.append(poly[0])  # close the polygon
+                    painter.drawPolyline(poly)
+
+            # Main colour for spiral arcs
+            painter.setPen(main_pen)
+            for arc in arcs:
+                if len(arc) >= 2:
+                    poly = QPolygonF([QPointF(float(p[0]), float(p[1])) for p in arc])
+                    painter.drawPolyline(poly)
+
+        painter.end()
+
+
+# ---------------------------------------------------------------------------
 # Overlay Manager
 # ---------------------------------------------------------------------------
 
-# Global reference so the MAXScript callback can reach the manager instance
+# Legacy global kept for backward compatibility with old MAXScript callbacks
 _global_manager: Optional["OverlayManager"] = None
 
 
 def _redraw_callback_entry() -> None:
-    """Entry point invoked by the MAXScript redraw-views callback."""
-    if _global_manager is not None:
-        _global_manager.draw_overlays()
+    """Legacy entry point — no longer used (overlay uses Qt widget now).
+
+    Kept so that any residual MAXScript ``focusOverlayRedrawCB`` callback
+    does not raise an AttributeError.
+    """
+    pass
 
 
 class OverlayManager:
-    """Manages viewport composition overlays and the redraw callback lifecycle.
+    """Manages viewport composition overlays via a Qt overlay widget.
 
     Attributes
     ----------
@@ -336,8 +542,7 @@ class OverlayManager:
         Currently enabled overlay types (use the ``OVERLAY_*`` constants).
     target_camera_node : object | None
         The 3ds Max camera node for which overlays should be drawn.
-        If *None* or the viewport is not looking through this camera,
-        nothing is drawn.
+        If *None*, the overlay is hidden.
     line_color : tuple[int, int, int]
         RGB colour used for overlay lines (0-255 per channel).
     """
@@ -349,8 +554,12 @@ class OverlayManager:
         self.active_overlays: set[int] = set()
         self.target_camera_node: object | None = None
         self.line_color: Tuple[int, int, int] = line_color
+
+        self._overlay_widget: Optional[ViewportOverlayWidget] = None
+        self._geometry_timer: Optional[QTimer] = None
+        self._last_vp_hwnd: Optional[int] = None
+        self._last_vp_rect: Optional[Tuple[int, int, int, int]] = None
         self._callback_registered: bool = False
-        self._callback_name: str = "focusOverlayRedrawCB"
 
     # -- public API ---------------------------------------------------------
 
@@ -360,6 +569,7 @@ class OverlayManager:
             self.active_overlays.discard(overlay_type)
         else:
             self.active_overlays.add(overlay_type)
+        self._update_visibility()
 
     def is_active(self, overlay_type: int) -> bool:
         """Return *True* if *overlay_type* is currently enabled."""
@@ -368,228 +578,180 @@ class OverlayManager:
     def set_target_camera(self, camera_node: object | None) -> None:
         """Set the camera node whose viewport will receive overlays."""
         self.target_camera_node = camera_node
+        # Force a full re-scan on the next sync tick
+        self._last_vp_hwnd = None
+        self._last_vp_rect = None
+        self._rebind_viewport()
 
-    # -- callback registration / removal ------------------------------------
+    # -- callback registration / removal (public API kept for compat) -------
 
     def register_callback(self) -> None:
-        """Register a MAXScript redraw-views callback that calls back into Python.
+        """Create the Qt overlay widget and start geometry sync.
 
-        The callback is a lightweight MAXScript wrapper that invokes
-        :func:`_redraw_callback_entry` via ``python.execute()``.
+        Replaces the old ``registerRedrawViewsCallback`` approach.
         """
-        if rt is None:
+        if QWidget is None or rt is None:
             return
         if self._callback_registered:
             return
 
-        # Store ourselves as the global so the callback can find us
+        # Clean up any residual MAXScript gw-based callback from a prior version
+        try:
+            rt.execute("try(unregisterRedrawViewsCallback focusOverlayRedrawCB)catch()")
+        except Exception:
+            pass
+
+        # Store ourselves as the global (legacy compat)
         global _global_manager
         _global_manager = self
 
-        # Build the MAXScript callback definition.
-        # We unregister first to clean up any previous instance, then define
-        # the global function, then register it. This avoids duplicate handlers
-        # and ensures the python execution string is always updated.
-        mxs = (
-            "global {name}\n"
-            "try(unregisterRedrawViewsCallback {name})catch()\n"
-            "fn {name} = (\n"
-            "    python.execute \"import sys; m = sys.modules.get('FocusCam.overlay_utils') or sys.modules.get('Focus.overlay_utils') or sys.modules.get('overlay_utils'); m._redraw_callback_entry() if m else None\"\n"
-            ")\n"
-            "registerRedrawViewsCallback {name}\n"
-        ).format(name=self._callback_name)
+        # Create the overlay widget (parented to Max main window)
+        parent_widget = None
+        try:
+            max_hwnd = int(rt.windows.getMAXHWND())
+            parent_widget = QWidget.find(max_hwnd)
+        except Exception:
+            pass
 
-        rt.execute(mxs)
+        self._overlay_widget = ViewportOverlayWidget(self, parent=parent_widget)
+
+        # Start geometry sync timer
+        self._geometry_timer = QTimer()
+        self._geometry_timer.timeout.connect(self._sync_geometry)
+        self._geometry_timer.start(300)
+
         self._callback_registered = True
 
+        # Perform initial viewport binding
+        self._rebind_viewport()
+
     def unregister_callback(self) -> None:
-        """Remove the previously registered redraw-views callback."""
-        if rt is None:
-            return
+        """Destroy the Qt overlay widget and stop geometry sync."""
         if not self._callback_registered:
             return
 
-        mxs = "unregisterRedrawViewsCallback {name}\n".format(
-            name=self._callback_name,
-        )
-        rt.execute(mxs)
+        # Stop timer
+        if self._geometry_timer is not None:
+            self._geometry_timer.stop()
+            try:
+                self._geometry_timer.deleteLater()
+            except Exception:
+                pass
+            self._geometry_timer = None
+
+        # Destroy widget
+        if self._overlay_widget is not None:
+            try:
+                self._overlay_widget.close()
+                self._overlay_widget.deleteLater()
+            except Exception:
+                pass
+            self._overlay_widget = None
+
+        self._last_vp_hwnd = None
+        self._last_vp_rect = None
         self._callback_registered = False
 
         global _global_manager
         if _global_manager is self:
             _global_manager = None
 
-    # -- drawing ------------------------------------------------------------
+    # -- drawing (triggers Qt repaint) --------------------------------------
 
     def draw_overlays(self) -> None:
-        """Draw all active overlays on the current viewport.
+        """Trigger a repaint of the overlay widget.
 
-        Called automatically by the redraw callback.
+        Called for backward compatibility — the actual drawing happens
+        in ``ViewportOverlayWidget.paintEvent()``.
         """
-        if rt is None or pymxs is None:
-            return
-        if self.target_camera_node is None:
-            return
-        if not self.active_overlays:
-            return
-
-        # ---- Check if active viewport is looking through our camera ------
-        try:
-            active_vp_camera = rt.viewport.getCamera()
-        except Exception:
-            return
-
-        if active_vp_camera is None:
-            return
-
-        # Compare by node handle for a reliable identity check
-        try:
-            target_handle = rt.getHandleByAnim(self.target_camera_node)
-            vp_handle = rt.getHandleByAnim(active_vp_camera)
-            if target_handle != vp_handle:
-                return
-        except Exception:
-            return
-
-        # ---- Retrieve viewport dimensions --------------------------------
-        try:
-            gw = rt.gw
-            vp_width = int(gw.getWinSizeX())
-            vp_height = int(gw.getWinSizeY())
-        except Exception:
-            return
-
-        if vp_width <= 0 or vp_height <= 0:
-            return
-
-        # ---- Retrieve render dimensions to compute Safe Frame -----------
-        try:
-            render_width = int(rt.renderWidth)
-            render_height = int(rt.renderHeight)
-        except Exception:
-            render_width = vp_width
-            render_height = vp_height
-
-        x, y, w, h = get_safe_frame_rect(vp_width, vp_height, render_width, render_height)
-
-
-        # ---- Set line drawing colour -------------------------------------
-        r, g, b = self.line_color
-        try:
-            rt.execute(
-                "gw.setColor #line (color {r} {g} {b})".format(r=r, g=g, b=b)
-            )
-        except Exception:
-            return
-
-        # ---- Draw each active overlay ------------------------------------
-        if OVERLAY_THIRDS in self.active_overlays:
-            self._draw_line_segments(calc_thirds(x, y, w, h))
-
-        if OVERLAY_GOLDEN in self.active_overlays:
-            self._draw_line_segments(calc_golden_ratio(x, y, w, h))
-
-        if OVERLAY_DIAGONALS in self.active_overlays:
-            self._draw_line_segments(calc_diagonals(x, y, w, h))
-
-        if OVERLAY_SPIRAL in self.active_overlays:
-            rects, spiral_arcs = _calc_spiral_golden_rects(x, y, w, h)
-            
-            # 1. Draw sub-rectangles in a dimmer color (clr / 2.5)
-            r_dim = int(r / 2.5)
-            g_dim = int(g / 2.5)
-            b_dim = int(b / 2.5)
-            try:
-                rt.execute(
-                    "gw.setColor #line (color {r} {g} {b})".format(r=r_dim, g=g_dim, b=b_dim)
-                )
-            except Exception:
-                pass
-            
-            for r_pts in rects:
-                self._draw_closed_polyline(r_pts)
-                
-            # 2. Restore main color for the spiral curve
-            try:
-                rt.execute(
-                    "gw.setColor #line (color {r} {g} {b})".format(r=r, g=g, b=b)
-                )
-            except Exception:
-                pass
-                
-            for arc in spiral_arcs:
-                self._draw_polyline(arc)
-
-        # Flush GW buffer so the lines appear on screen
-        try:
-            gw.enlargeUpdateRect(rt.Name("whole"))
-            gw.updateScreen()
-        except Exception:
-            pass
+        if self._overlay_widget is not None and self.active_overlays:
+            self._overlay_widget.update()
 
     # -- internal helpers ---------------------------------------------------
 
-    def _draw_closed_polyline(self, points: Sequence[Tuple[int, int]]) -> None:
-        """Draw a closed polyline through *points* via ``gw.hPolyline``."""
-        if rt is None:
+    def _update_visibility(self) -> None:
+        """Show/hide the overlay widget based on current state."""
+        if self._overlay_widget is None:
             return
-        if len(points) < 2:
+        if self.active_overlays and self.target_camera_node is not None:
+            if not self._overlay_widget.isVisible():
+                self._rebind_viewport()
+            else:
+                self._overlay_widget.update()  # just repaint
+        else:
+            self._overlay_widget.hide()
+
+    def _rebind_viewport(self) -> None:
+        """Find the camera viewport HWND and position the overlay over it."""
+        if self._overlay_widget is None:
             return
-        pts_str = ", ".join(
-            "[{x},{y},0]".format(x=px, y=py) for px, py in points
-        )
-        mxs = "gw.hPolyline #({pts}) true".format(pts=pts_str)
+        if self.target_camera_node is None or not self.active_overlays:
+            self._overlay_widget.hide()
+            return
+
         try:
-            rt.execute(mxs)
+            cam_name = str(self.target_camera_node.name)
+        except Exception:
+            self._overlay_widget.hide()
+            return
+
+        hwnd, rect = _find_camera_viewport_hwnd(cam_name)
+        if hwnd is None or rect is None:
+            self._overlay_widget.hide()
+            return
+
+        self._last_vp_hwnd = hwnd
+        self._last_vp_rect = rect
+
+        sx, sy, sw, sh = rect
+        self._overlay_widget.reposition(sx, sy, sw, sh)
+
+        # Sync render dimensions for safe-frame
+        try:
+            rw = int(rt.renderWidth)
+            rh = int(rt.renderHeight)
+            self._overlay_widget.set_render_size(rw, rh)
         except Exception:
             pass
 
-    def _draw_line_segments(self, segments: Sequence[LineSegment]) -> None:
-        """Draw a batch of independent 2-point line segments via ``gw.hPolyline``.
+        self._overlay_widget.show()
+        self._overlay_widget.raise_()
+        self._overlay_widget.update()
 
-        Each segment is a tuple ``(x1, y1, x2, y2)``.
+    def _sync_geometry(self) -> None:
+        """Timer callback: keep overlay positioned over the camera viewport.
+
+        Uses fast Win32 ``GetWindowRect`` for the cached HWND (no MAXScript
+        round-trip) and falls back to a full re-scan only when the HWND is lost.
         """
-        if rt is None:
+        if self._overlay_widget is None or not self.active_overlays:
+            return
+        if self.target_camera_node is None:
+            if self._overlay_widget.isVisible():
+                self._overlay_widget.hide()
             return
 
-        for x1, y1, x2, y2 in segments:
-            # Build a MAXScript snippet to draw the segment.
-            # gw.hPolyline takes an array of Point3 (screen-space, z=0)
-            # and a boolean (closed = false).
-            mxs = (
-                "gw.hPolyline #([{x1},{y1},0], [{x2},{y2},0]) false"
-            ).format(x1=x1, y1=y1, x2=x2, y2=y2)
-            try:
-                rt.execute(mxs)
-            except Exception:
-                pass
+        # Fast path: re-read geometry of the known HWND
+        if self._last_vp_hwnd is not None and _user32 is not None:
+            rect = _get_screen_rect(self._last_vp_hwnd)
+            if rect[2] > 0 and rect[3] > 0:
+                if rect != self._last_vp_rect:
+                    self._last_vp_rect = rect
+                    sx, sy, sw, sh = rect
+                    self._overlay_widget.reposition(sx, sy, sw, sh)
 
-    def _draw_polyline(self, points: Sequence[Tuple[int, int]]) -> None:
-        """Draw a continuous polyline through *points* via ``gw.hPolyline``.
+                # Sync render dimensions
+                try:
+                    rw = int(rt.renderWidth)
+                    rh = int(rt.renderHeight)
+                    self._overlay_widget.set_render_size(rw, rh)
+                except Exception:
+                    pass
 
-        Because MAXScript has a practical limit on inline array size, we
-        break the polyline into chunks and draw each chunk as a separate
-        ``gw.hPolyline`` call, overlapping by one point so the line is
-        visually continuous.
-        """
-        if rt is None:
-            return
-        if len(points) < 2:
-            return
+                if not self._overlay_widget.isVisible():
+                    self._overlay_widget.show()
+                    self._overlay_widget.raise_()
+                return
 
-        chunk_size = 64  # Max points per single gw.hPolyline call
-
-        for start in range(0, len(points) - 1, chunk_size - 1):
-            chunk = points[start : start + chunk_size]
-            if len(chunk) < 2:
-                break
-
-            # Build the Point3 array string: #([x,y,0], [x,y,0], ...)
-            pts_str = ", ".join(
-                "[{x},{y},0]".format(x=px, y=py) for px, py in chunk
-            )
-            mxs = "gw.hPolyline #({pts}) false".format(pts=pts_str)
-            try:
-                rt.execute(mxs)
-            except Exception:
-                pass
+        # Slow path: full re-scan (HWND lost or not yet known)
+        self._rebind_viewport()
