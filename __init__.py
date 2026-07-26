@@ -1,1 +1,1 @@
-# FocusCam package
+# Focus package
