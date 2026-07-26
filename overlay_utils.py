@@ -427,7 +427,6 @@ class ViewportOverlayWidget(QWidget):
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.Tool
-            | Qt.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -708,8 +707,11 @@ class OverlayManager:
 
         # Sync render dimensions for safe-frame
         try:
-            rw = int(rt.renderWidth)
-            rh = int(rt.renderHeight)
+            import camera_utils
+            if self.target_camera_node is not None:
+                rw, rh = camera_utils.get_effective_resolution(self.target_camera_node)
+            else:
+                rw, rh = int(rt.renderWidth), int(rt.renderHeight)
             self._overlay_widget.set_render_size(rw, rh)
         except Exception:
             pass
@@ -742,8 +744,11 @@ class OverlayManager:
 
                 # Sync render dimensions
                 try:
-                    rw = int(rt.renderWidth)
-                    rh = int(rt.renderHeight)
+                    import camera_utils
+                    if self.target_camera_node is not None:
+                        rw, rh = camera_utils.get_effective_resolution(self.target_camera_node)
+                    else:
+                        rw, rh = int(rt.renderWidth), int(rt.renderHeight)
                     self._overlay_widget.set_render_size(rw, rh)
                 except Exception:
                     pass
