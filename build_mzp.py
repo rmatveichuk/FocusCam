@@ -159,7 +159,7 @@ clear temp on MAX exit
         "Icon.svg"
     ]
     
-    output_filename = "FocusCam_Beta_02.mzp"
+    output_filename = "FocusCam_01.mzp"
     output_path = os.path.join(current_dir, output_filename)
     
     print("\nНачало сборки установщика...")
@@ -174,6 +174,14 @@ clear temp on MAX exit
                     print(f" -> Ошибка: Файл {file_name} не найден!")
                     return
         print(f"\nСборка успешно завершена!\nСоздан файл установщика: {output_path}")
+
+        # Copy to release folder
+        release_folder = r"E:\Софт\Плагины\RM Scripts\FocusCam"
+        if os.path.exists(release_folder):
+            import shutil
+            release_path = os.path.join(release_folder, output_filename)
+            shutil.copy2(output_path, release_path)
+            print(f" -> Скопирован в папку релизов: {release_path}")
     except Exception as e:
         print(f"Ошибка при сборке архива: {e}")
 
