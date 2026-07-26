@@ -331,7 +331,7 @@ class FocusCamWindow(QDockWidget):
             self.overlay_mgr.active_overlays.add(overlay_type)
         else:
             self.overlay_mgr.active_overlays.discard(overlay_type)
-        self.overlay_mgr._update_visibility()
+        self.overlay_mgr.draw_overlays()
         if rt:
             rt.forceCompleteRedraw()
 
