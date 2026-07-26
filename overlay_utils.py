@@ -90,12 +90,15 @@ def get_safe_frame_rect(
     vp_height: int,
     render_width: int,
     render_height: int,
+    header_margin: int = 24,
+    footer_margin: int = 6,
 ) -> Tuple[int, int, int, int]:
     """Calculate the safe frame bounding box (x_offset, y_offset, width, height) in viewport pixels."""
-    if vp_height <= 0 or render_height <= 0:
-        return 0, 0, vp_width, vp_height
+    usable_h = vp_height - (header_margin + footer_margin)
+    if vp_height <= 0 or usable_h <= 0 or render_height <= 0:
+        return 0, header_margin, vp_width, max(1, vp_height - header_margin)
 
-    view_aspect = float(vp_width) / float(vp_height)
+    view_aspect = float(vp_width) / float(usable_h)
     render_aspect = float(render_width) / float(render_height)
 
     if render_aspect > view_aspect:
@@ -103,13 +106,13 @@ def get_safe_frame_rect(
         w = vp_width
         h = int(round(vp_width / render_aspect))
         x = 0
-        y = int(round((vp_height - h) / 2.0))
+        y = header_margin + int(round((usable_h - h) / 2.0))
     else:
         # Safe frame is limited by height (vertical bars)
-        w = int(round(vp_height * render_aspect))
-        h = vp_height
+        w = int(round(usable_h * render_aspect))
+        h = usable_h
         x = int(round((vp_width - w) / 2.0))
-        y = 0
+        y = header_margin
 
     return x, y, w, h
 
