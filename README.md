@@ -29,6 +29,12 @@
 * **Drag-and-Drop Sorting**  
   Easily organize your camera list by dragging and dropping the camera cards into your preferred order.
 
+* **Automated Batch Render Integration (Smart Upsert)**  
+  Instantly add the currently selected camera (`+ Selected`) or all scene cameras (`🎬 Batch All`) to 3ds Max Batch Render with a single click. Automatically synchronizes custom per-camera resolutions, safe frame aspect ratios (`pixelAspect = 1.0`), and clean output file paths (`renders/<CameraName>.png`). Includes automatic unsaved scene warnings.
+
+* **Collapsible Extra Tools Panel**  
+  Keep the user interface sleek and compact. Use the interactive `▼ More Tools ▼` toggle button to expand or collapse bottom action toolbars on demand.
+
 * **Light & LightMix Indicators**  
   Keep track of which cameras have specific lighting setups with visual `L` (Physical Light) and `M` (LightMix) preset indicators.
 
