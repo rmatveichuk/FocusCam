@@ -297,27 +297,26 @@ QFrame#separator {
 
 /* --- Interactive Batch Toggle Separator --- */
 QPushButton#batchToggleSeparator {
-    background-color: transparent;
-    border: none;
-    border-top: 1px solid #363636;
-    color: #666666;
-    font-size: 10px;
+    background-color: #262626;
+    border: 1px solid #363636;
+    border-radius: 4px;
+    color: #888888;
+    font-size: 11px;
     font-weight: bold;
-    min-height: 12px;
-    max-height: 12px;
-    padding: 0;
-    margin: 2px 0px 4px 0px;
-    border-radius: 0px;
+    min-height: 18px;
+    max-height: 18px;
+    padding: 0 4px;
+    margin: 4px 0px 2px 0px;
 }
 
 QPushButton#batchToggleSeparator:hover {
-    border-top: 1px solid #4f729b;
-    color: #4f729b;
-    background-color: #282828;
+    background-color: #303030;
+    border-color: #4f729b;
+    color: #ffffff;
 }
 
 QPushButton#batchToggleSeparator:pressed {
-    border-top: 1px solid #3d5a7d;
-    color: #3d5a7d;
-    background-color: #1e1e1e;
+    background-color: #1c1c1c;
+    border-color: #3d5a7d;
+    color: #888888;
 }

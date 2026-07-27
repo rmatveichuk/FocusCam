@@ -399,16 +399,17 @@ class FocusUI(QWidget):
         self.tb_main_layout.addLayout(self.tb_row_overlays)
         
         # Interactive Batch Render Toggle Separator Line
-        self.batch_toggle_btn = QPushButton("─ ▲ ─")
+        self.batch_toggle_btn = QPushButton("▼  Batch Render  ▼")
         self.batch_toggle_btn.setObjectName("batchToggleSeparator")
         self.batch_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self.batch_toggle_btn.setToolTip("Click to collapse Batch Render buttons (Compact Mode)")
+        self.batch_toggle_btn.setToolTip("Show Batch Render buttons")
         self.batch_toggle_btn.clicked.connect(self._toggle_batch_panel)
         self.tb_main_layout.addWidget(self.batch_toggle_btn)
         
-        # Batch Render Container Widget
+        # Batch Render Container Widget (Hidden by default for compact UI)
         self.batch_container = QWidget()
         self.batch_container.setObjectName("batchContainer")
+        self.batch_container.setVisible(False)
         self.tb_row_batch = QHBoxLayout(self.batch_container)
         self.tb_row_batch.setContentsMargins(0, 2, 0, 0)
         self.tb_row_batch.setSpacing(4)
@@ -484,12 +485,12 @@ class FocusUI(QWidget):
         self.batch_container.setVisible(not is_visible)
         if is_visible:
             # Now collapsed
-            self.batch_toggle_btn.setText("─ ▼ ─")
-            self.batch_toggle_btn.setToolTip("Click to expand Batch Render buttons")
+            self.batch_toggle_btn.setText("▼  Batch Render  ▼")
+            self.batch_toggle_btn.setToolTip("Show Batch Render buttons")
         else:
             # Now expanded
-            self.batch_toggle_btn.setText("─ ▲ ─")
-            self.batch_toggle_btn.setToolTip("Click to collapse Batch Render buttons (Compact Mode)")
+            self.batch_toggle_btn.setText("▲  Batch Render  ▲")
+            self.batch_toggle_btn.setToolTip("Hide Batch Render buttons")
 
     def select_camera(self, camera_node):
         """Visually select the camera and update toolbar state."""
