@@ -96,16 +96,27 @@ def build_output_path(cam_node, ext: str = "png", custom_dir: str = None, subfol
 
 def find_view_by_camera(cam_node):
     """Return existing BatchRenderView object for cam_node if present, else None."""
-    if rt is None or not hasattr(rt, "batchRenderMgr"):
+    if rt is None or not hasattr(rt, "batchRenderMgr") or cam_node is None:
         return None
 
     mgr = rt.batchRenderMgr
     try:
         num_views = int(mgr.numViews)
+        cam_name = getattr(cam_node, "name", "")
+        
+        # 1. First pass: match exact camera node reference
         for i in range(1, num_views + 1):
             v = mgr.GetView(i)
             if v and getattr(v, "camera", None) == cam_node:
                 return v
+
+        # 2. Second pass: match by view name (e.g. if camera reference was lost or set manually)
+        if cam_name:
+            for i in range(1, num_views + 1):
+                v = mgr.GetView(i)
+                if v and getattr(v, "name", "") == cam_name:
+                    return v
+
     except Exception as e:
         print(f"[FocusCam] Error searching BatchRender views: {e}")
     return None
