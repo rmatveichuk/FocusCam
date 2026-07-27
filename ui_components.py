@@ -398,11 +398,11 @@ class FocusUI(QWidget):
         
         self.tb_main_layout.addLayout(self.tb_row_overlays)
         
-        # Interactive Batch Render Toggle Separator Line
-        self.batch_toggle_btn = QPushButton("▼  Batch Render  ▼")
+        # Interactive Toggle Separator Line
+        self.batch_toggle_btn = QPushButton("▼  More Tools  ▼")
         self.batch_toggle_btn.setObjectName("batchToggleSeparator")
         self.batch_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self.batch_toggle_btn.setToolTip("Show Batch Render buttons")
+        self.batch_toggle_btn.setToolTip("Show bottom tools")
         self.batch_toggle_btn.clicked.connect(self._toggle_batch_panel)
         self.tb_main_layout.addWidget(self.batch_toggle_btn)
         
@@ -485,12 +485,12 @@ class FocusUI(QWidget):
         self.batch_container.setVisible(not is_visible)
         if is_visible:
             # Now collapsed
-            self.batch_toggle_btn.setText("▼  Batch Render  ▼")
-            self.batch_toggle_btn.setToolTip("Show Batch Render buttons")
+            self.batch_toggle_btn.setText("▼  More Tools  ▼")
+            self.batch_toggle_btn.setToolTip("Show bottom tools")
         else:
             # Now expanded
-            self.batch_toggle_btn.setText("▲  Batch Render  ▲")
-            self.batch_toggle_btn.setToolTip("Hide Batch Render buttons")
+            self.batch_toggle_btn.setText("▲  More Tools  ▲")
+            self.batch_toggle_btn.setToolTip("Hide bottom tools")
 
     def select_camera(self, camera_node):
         """Visually select the camera and update toolbar state."""
