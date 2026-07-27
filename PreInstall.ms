@@ -12,7 +12,7 @@
     
     -- Принудительно удаляем старые файлы, чтобы mzp.run гарантированно скопировал новые
     local destDir = (getdir #userScripts) + "\\FocusCam\\"
-    local filesToDelete = #("focus_manager.py", "ui_components.py", "camera_utils.py", "light_utils.py", "overlay_utils.py", "__init__.py")
+    local filesToDelete = #("focus_manager.py", "ui_components.py", "camera_utils.py", "light_utils.py", "overlay_utils.py", "batch_utils.py", "__init__.py")
     for f in filesToDelete do (
         try ( deleteFile (destDir + f) ) catch ()
     )

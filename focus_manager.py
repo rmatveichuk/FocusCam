@@ -27,6 +27,7 @@ except ImportError:
 from . import camera_utils
 from . import light_utils
 from . import overlay_utils
+from . import batch_utils
 from .ui_components import FocusUI
 import contextlib
 
@@ -143,6 +144,24 @@ class FocusCamWindow(QDockWidget):
         self.ui.res_swapped.connect(self.on_res_swapped)
         self.ui.refresh_thumbnail_req.connect(self.on_refresh_thumbnail)
         self.ui.refresh_clicked.connect(self.refresh_cameras)
+        self.ui.batch_selected_req.connect(self.on_batch_selected)
+        self.ui.batch_all_req.connect(self.on_batch_all)
+
+    def on_batch_selected(self):
+        """Smart Upsert the currently active / selected camera into 3ds Max Batch Render."""
+        if not batch_utils.check_scene_saved_warning():
+            return
+        cam = self.ui.active_camera_node
+        if cam and camera_utils.is_node_valid(cam):
+            batch_utils.smart_upsert_camera(cam)
+
+    def on_batch_all(self):
+        """Smart Upsert ALL scene cameras into 3ds Max Batch Render."""
+        if not batch_utils.check_scene_saved_warning():
+            return
+        cameras = camera_utils.get_all_cameras()
+        if cameras:
+            batch_utils.smart_upsert_all_cameras(cameras)
 
     def refresh_cameras(self):
         """Discover all cameras, populate UI, and start thumbnail generation."""

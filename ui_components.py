@@ -238,6 +238,10 @@ class FocusUI(QWidget):
     # Refresh scene cameras list signal
     refresh_clicked = Signal()
 
+    # Batch Render signals
+    batch_selected_req = Signal()
+    batch_all_req = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.active_camera_node = None
@@ -394,6 +398,32 @@ class FocusUI(QWidget):
         
         self.tb_main_layout.addLayout(self.tb_row_overlays)
         
+        # Batch Render Separator Line
+        self.batch_sep = QFrame()
+        self.batch_sep.setObjectName("separator")
+        self.tb_main_layout.addWidget(self.batch_sep)
+        
+        # Batch Render Row (+ Selected | 🎬 Batch All)
+        self.tb_row_batch = QHBoxLayout()
+        self.tb_row_batch.setSpacing(4)
+        
+        self.batch_sel_btn = QPushButton("+ Selected")
+        self.batch_sel_btn.setObjectName("batchSelectedButton")
+        self.batch_sel_btn.setFixedHeight(28)
+        self.batch_sel_btn.setToolTip("Add / Update selected camera in 3ds Max Batch Render")
+        self.batch_sel_btn.clicked.connect(self._on_batch_selected_clicked)
+        
+        self.batch_all_btn = QPushButton("🎬 Batch All")
+        self.batch_all_btn.setObjectName("batchAllButton")
+        self.batch_all_btn.setFixedHeight(28)
+        self.batch_all_btn.setToolTip("Add / Update ALL scene cameras in 3ds Max Batch Render")
+        self.batch_all_btn.clicked.connect(self._on_batch_all_clicked)
+        
+        self.tb_row_batch.addWidget(self.batch_sel_btn, stretch=1)
+        self.tb_row_batch.addWidget(self.batch_all_btn, stretch=1)
+        
+        self.tb_main_layout.addLayout(self.tb_row_batch)
+        
         self.layout.addWidget(self.toolbar)
         
         # Disable focus outlines on all buttons
@@ -432,6 +462,15 @@ class FocusUI(QWidget):
         
         self.light_btn.setEnabled(state)
         self.lmix_btn.setEnabled(state)
+        
+        self.batch_sel_btn.setEnabled(state)
+        self.batch_all_btn.setEnabled(True)
+
+    def _on_batch_selected_clicked(self):
+        self.batch_selected_req.emit()
+
+    def _on_batch_all_clicked(self):
+        self.batch_all_req.emit()
 
     def select_camera(self, camera_node):
         """Visually select the camera and update toolbar state."""
