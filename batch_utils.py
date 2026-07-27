@@ -58,7 +58,7 @@ def check_scene_saved_warning() -> bool:
     return True
 
 
-def build_output_path(cam_node, ext: str = "png", custom_dir: str = None, subfolder: str = "renders", pattern: str = "{Scene}_{Camera}") -> str:
+def build_output_path(cam_node, ext: str = "png", custom_dir: str = None, subfolder: str = "renders", pattern: str = "{Camera}") -> str:
     """
     Construct render output file path for camera.
     Automatically creates the output directory on disk if it does not exist.
@@ -122,7 +122,7 @@ def find_view_by_camera(cam_node):
     return None
 
 
-def smart_upsert_camera(cam_node, ext: str = "png", custom_dir: str = None, subfolder: str = "renders", pattern: str = "{Scene}_{Camera}"):
+def smart_upsert_camera(cam_node, ext: str = "png", custom_dir: str = None, subfolder: str = "renders", pattern: str = "{Camera}"):
     """
     Smart Upsert a camera into 3ds Max Batch Render:
         - If camera exists: updates properties (enabled=True, outputFilename, width, height, pixelAspect=1.0)
@@ -171,7 +171,7 @@ def smart_upsert_camera(cam_node, ext: str = "png", custom_dir: str = None, subf
     return view
 
 
-def smart_upsert_all_cameras(cameras, ext: str = "png", custom_dir: str = None, subfolder: str = "renders", pattern: str = "{Scene}_{Camera}") -> int:
+def smart_upsert_all_cameras(cameras, ext: str = "png", custom_dir: str = None, subfolder: str = "renders", pattern: str = "{Camera}") -> int:
     """
     Smart Upsert all cameras in the list into 3ds Max Batch Render.
     Returns the count of processed views.
