@@ -398,13 +398,19 @@ class FocusUI(QWidget):
         
         self.tb_main_layout.addLayout(self.tb_row_overlays)
         
-        # Batch Render Separator Line
-        self.batch_sep = QFrame()
-        self.batch_sep.setObjectName("separator")
-        self.tb_main_layout.addWidget(self.batch_sep)
+        # Interactive Batch Render Toggle Separator Line
+        self.batch_toggle_btn = QPushButton("─ ▲ ─")
+        self.batch_toggle_btn.setObjectName("batchToggleSeparator")
+        self.batch_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.batch_toggle_btn.setToolTip("Click to collapse Batch Render buttons (Compact Mode)")
+        self.batch_toggle_btn.clicked.connect(self._toggle_batch_panel)
+        self.tb_main_layout.addWidget(self.batch_toggle_btn)
         
-        # Batch Render Row (+ Selected | 🎬 Batch All)
-        self.tb_row_batch = QHBoxLayout()
+        # Batch Render Container Widget
+        self.batch_container = QWidget()
+        self.batch_container.setObjectName("batchContainer")
+        self.tb_row_batch = QHBoxLayout(self.batch_container)
+        self.tb_row_batch.setContentsMargins(0, 2, 0, 0)
         self.tb_row_batch.setSpacing(4)
         
         self.batch_sel_btn = QPushButton("+ Selected")
@@ -422,7 +428,7 @@ class FocusUI(QWidget):
         self.tb_row_batch.addWidget(self.batch_sel_btn, stretch=1)
         self.tb_row_batch.addWidget(self.batch_all_btn, stretch=1)
         
-        self.tb_main_layout.addLayout(self.tb_row_batch)
+        self.tb_main_layout.addWidget(self.batch_container)
         
         self.layout.addWidget(self.toolbar)
         
@@ -471,6 +477,19 @@ class FocusUI(QWidget):
 
     def _on_batch_all_clicked(self):
         self.batch_all_req.emit()
+
+    def _toggle_batch_panel(self):
+        """Toggle the visibility of the bottom Batch Render buttons container."""
+        is_visible = self.batch_container.isVisible()
+        self.batch_container.setVisible(not is_visible)
+        if is_visible:
+            # Now collapsed
+            self.batch_toggle_btn.setText("─ ▼ ─")
+            self.batch_toggle_btn.setToolTip("Click to expand Batch Render buttons")
+        else:
+            # Now expanded
+            self.batch_toggle_btn.setText("─ ▲ ─")
+            self.batch_toggle_btn.setToolTip("Click to collapse Batch Render buttons (Compact Mode)")
 
     def select_camera(self, camera_node):
         """Visually select the camera and update toolbar state."""
