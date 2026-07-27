@@ -511,31 +511,33 @@ def show_focus_window():
         try:
             focus_window.objectName()  # Probe: raises RuntimeError if C++ object destroyed
         except RuntimeError:
-            # Window was closed via the X button — C++ object is gone
             focus_window = None
             sys._focus_window = None
 
-    # -- If globals were reset (e.g. after MZP reinstall), clean up orphaned windows first --
-    if focus_window is None:
-        _cleanup_orphaned_windows(max_main_window)
-
-    # -- TOGGLE: if the window exists and is visible, close it --
+    # -- TOGGLE: if the window exists and is visible, close it and reset handle --
     if focus_window is not None and focus_window.isVisible():
         try:
             focus_window.close()
+            focus_window.deleteLater()
         except Exception:
             pass
+        sys._focus_window = None
         return
 
-    # -- CREATE: build window if it doesn't exist yet --
-    is_new = False
-    if focus_window is None:
-        focus_window = FocusCamWindow(parent=max_main_window)
-        sys._focus_window = focus_window
-        is_new = True
+    # -- If old window was hidden, destroy it to guarantee fresh UI instantiation --
+    if focus_window is not None:
+        try:
+            focus_window.close()
+            focus_window.deleteLater()
+        except Exception:
+            pass
+        sys._focus_window = None
 
-    # -- SHOW: dock and display --
-    if max_main_window and is_new:
+    _cleanup_orphaned_windows(max_main_window)
+    focus_window = FocusCamWindow(parent=max_main_window)
+    sys._focus_window = focus_window
+
+    if max_main_window:
         max_main_window.addDockWidget(Qt.LeftDockWidgetArea, focus_window)
         focus_window.setFloating(False)
 
