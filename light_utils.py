@@ -281,69 +281,42 @@ def _find_render_element_vfb_channel_index(element_name):
     return 2
 
 
-def _ensure_corona_camera_lightmix_element(camera_node):
-    """Ensure a CShading_LightMix element named LMix_<CameraName> exists in the scene."""
-    if rt is None or camera_node is None:
+def _ensure_corona_lightmix_element():
+    """Ensure there is exactly ONE CShading_LightMix element in the scene, cleaning up duplicates."""
+    if rt is None:
         return None
-    element_name = "LMix_{}".format(camera_node.name)
     try:
         mgr = rt.maxOps.GetCurRenderElementMgr()
         num_elements = mgr.NumRenderElements()
-
-        # Check if it already exists
+        first_lm = None
+        duplicates = []
         for i in range(num_elements):
             elem = mgr.GetRenderElement(i)
-            if str(rt.classOf(elem)).lower() == "cshading_lightmix":
-                if elem.elementName == element_name:
-                    return elem
+            if elem is not None and str(rt.classOf(elem)).lower() == "cshading_lightmix":
+                if first_lm is None:
+                    first_lm = elem
+                else:
+                    duplicates.append(elem)
 
-        # Create new CShading_LightMix element
+        # Remove old duplicate LightMix elements if any were created earlier
+        for elem in duplicates:
+            try:
+                mgr.RemoveRenderElement(elem)
+            except Exception:
+                pass
+
+        if first_lm is not None:
+            return first_lm
+
+        # Create a single CShading_LightMix element if none exists
         new_elem = rt.execute("CShading_LightMix()")
         if new_elem is not None:
-            new_elem.elementName = element_name
+            new_elem.elementName = "Interactive LightMix"
             mgr.AddRenderElement(new_elem)
             return new_elem
     except Exception:
         pass
     return None
-
-
-def _remove_corona_camera_lightmix_element(camera_node):
-    """Delete the camera's specific CShading_LightMix element from the scene."""
-    if rt is None or camera_node is None:
-        return
-    element_name = "LMix_{}".format(camera_node.name)
-    try:
-        mgr = rt.maxOps.GetCurRenderElementMgr()
-        num_elements = mgr.NumRenderElements()
-        for i in range(num_elements):
-            elem = mgr.GetRenderElement(i)
-            if str(rt.classOf(elem)).lower() == "cshading_lightmix":
-                if elem.elementName == element_name:
-                    mgr.RemoveRenderElement(elem)
-                    break
-    except Exception:
-        pass
-
-
-def _find_corona_lightmix_channel_index(camera_node):
-    """Find the 0-based index of the CShading_LightMix render element for the camera."""
-    if rt is None or camera_node is None:
-        return 0
-    element_name = "LMix_{}".format(camera_node.name)
-    try:
-        mgr = rt.maxOps.GetCurRenderElementMgr()
-        num_elements = mgr.NumRenderElements()
-        lm_index = 0
-        for i in range(num_elements):
-            elem = mgr.GetRenderElement(i)
-            if str(rt.classOf(elem)).lower() == "cshading_lightmix":
-                if elem.elementName == element_name:
-                    return lm_index
-                lm_index += 1
-    except Exception:
-        pass
-    return 0
 
 
 def _get_lightmix_preset_path(camera_node):
@@ -360,13 +333,11 @@ def _get_lightmix_preset_path(camera_node):
     
     scene_path = rt.maxFilePath
     if scene_path and os.path.exists(scene_path):
-        # 1. Search for existing file in subfolders (up to 2 levels deep)
         found_path = None
         for root, dirs, files in os.walk(scene_path):
-            # Limit depth to 2 levels to keep it fast
             depth = root[len(scene_path):].count(os.sep)
             if depth > 2:
-                dirs[:] = []  # stop recursion for this branch
+                dirs[:] = []
                 continue
             if "Focus_LightMix" in dirs:
                 potential_path = os.path.join(root, "Focus_LightMix", filename)
@@ -377,7 +348,6 @@ def _get_lightmix_preset_path(camera_node):
         if found_path:
             return found_path
             
-        # 2. If file not found, check if Focus_LightMix directory exists anywhere in subfolders
         found_dir = None
         for root, dirs, files in os.walk(scene_path):
             depth = root[len(scene_path):].count(os.sep)
@@ -388,7 +358,6 @@ def _get_lightmix_preset_path(camera_node):
                 found_dir = os.path.join(root, "Focus_LightMix")
                 break
                 
-        # 3. Use the found directory, or default to maxFilePath/Focus_LightMix
         if found_dir:
             presets_dir = found_dir
         else:
@@ -400,8 +369,6 @@ def _get_lightmix_preset_path(camera_node):
             pass
             
         target_path = os.path.join(presets_dir, filename)
-        
-        # If the file exists in TEMP but not in target_path, copy it over
         if not os.path.exists(target_path) and os.path.exists(temp_path):
             try:
                 import shutil
@@ -418,40 +385,31 @@ def _get_lightmix_preset_path(camera_node):
         return temp_path
 
 
+def cleanup_duplicate_corona_lightmix_elements():
+    """Public helper to clean up duplicate Corona LightMix elements from the scene."""
+    _ensure_corona_lightmix_element()
+
+
 def _save_corona_lightmix(camera_node):
     """Save Corona LightMix data using native saveLightMixSettings to a .conf file."""
-    _ensure_corona_camera_lightmix_element(camera_node)
-    lm_idx = _find_corona_lightmix_channel_index(camera_node)
-    
-    # Check how many LightMix channels are currently rendered in the active VFB
-    vfb_count = 0
-    try:
-        vfb_count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightMixChannels()"))
-    except Exception:
-        pass
-
-    # If the camera's specific LightMix channel is not yet rendered/present in the VFB,
-    # read/save from the first available active VFB channel (index 0) where the user is making adjustments.
-    read_idx = lm_idx if lm_idx < vfb_count else 0
-    
+    _ensure_corona_lightmix_element()
     conf_file = _get_lightmix_preset_path(camera_node)
     if not conf_file:
         return False
         
     try:
-        # Convert path separators to forward slashes for MAXScript safety
         conf_file_mxs = conf_file.replace("\\", "/")
         rt.execute(
-            "(CoronaRenderer.CoronaFp).saveLightMixSettings {read_idx} \"{filename}\""
-            .format(read_idx=read_idx, filename=conf_file_mxs)
+            '(CoronaRenderer.CoronaFp).saveLightMixSettings 0 "{filename}"'
+            .format(filename=conf_file_mxs)
         )
-    except Exception:
+    except Exception as e:
+        print(f"[FocusCam] Error saving Corona LightMix settings: {e}")
         return False
 
     try:
         ca = camera_utils._get_ca_block(camera_node, "cameraLightPresets")
         if ca is not None:
-            # Mark hasMixPreset as True and populate lmChannels as a flag indicator
             ca.lmChannels = rt.Array()
             rt.append(ca.lmChannels, "use_external_conf")
             ca.hasMixPreset = True
@@ -463,20 +421,7 @@ def _save_corona_lightmix(camera_node):
 
 def _apply_corona_lightmix(camera_node):
     """Restore Corona LightMix channels from the .conf file using loadLightMixSettings."""
-    _ensure_corona_camera_lightmix_element(camera_node)
-    lm_idx = _find_corona_lightmix_channel_index(camera_node)
-    
-    # Check how many LightMix channels are currently rendered in the active VFB
-    vfb_count = 0
-    try:
-        vfb_count = int(rt.execute("(CoronaRenderer.CoronaFp).numLightMixChannels()"))
-    except Exception:
-        pass
-
-    # If the camera's specific LightMix channel is not yet rendered/present in the VFB,
-    # apply to the first available active VFB channel (index 0) so the VFB updates visually.
-    apply_idx = lm_idx if lm_idx < vfb_count else 0
-    
+    _ensure_corona_lightmix_element()
     conf_file = _get_lightmix_preset_path(camera_node)
     if not conf_file or not os.path.exists(conf_file):
         return False
@@ -484,41 +429,12 @@ def _apply_corona_lightmix(camera_node):
     try:
         conf_file_mxs = conf_file.replace("\\", "/")
         rt.execute(
-            "(CoronaRenderer.CoronaFp).loadLightMixSettings {apply_idx} \"{filename}\""
-            .format(apply_idx=apply_idx, filename=conf_file_mxs)
+            '(CoronaRenderer.CoronaFp).loadLightMixSettings 0 "{filename}"'
+            .format(filename=conf_file_mxs)
         )
-    except Exception:
-        pass
-
-    # Switch the displayed VFB channel to match the LightMix element
-    vfb_chan = 2  # Default fallback
-    try:
-        vfb_chan = _find_render_element_vfb_channel_index("LMix_{}".format(camera_node.name))
-    except Exception:
-        pass
-
-    try:
-        # Switch the VFB displayed render element/channel (this switches VFB dropdown and display)
-        rt.execute(
-            "(CoronaRenderer.CoronaFp).setDisplayedChannel {vfb_chan}"
-            .format(vfb_chan=vfb_chan)
-        )
-    except Exception:
-        pass
-
-    try:
-        # Also switch the active LightMix channel in the VFB tab (backup/sync)
-        rt.execute("global focus_lm_error = \"\"")
-        rt.execute(
-            "try ( (CoronaRenderer.CoronaFp).setDisplayedLightMixChannel {apply_idx} ) catch ( focus_lm_error = getCurrentException() )"
-            .format(apply_idx=apply_idx)
-        )
-        err = rt.execute("focus_lm_error")
-        if err:
-            with open("C:\\Users\\RMatv\\.gemini\\antigravity\\brain\\925fc049-fb8f-412b-9e5d-60184321c2d6\\scratch\\vfb_error.txt", "a", encoding="utf-8") as f:
-                f.write("setDisplayedLightMixChannel Error: {}\n".format(err))
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[FocusCam] Error loading Corona LightMix settings: {e}")
+        return False
 
     return True
 

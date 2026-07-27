@@ -165,6 +165,12 @@ class FocusCamWindow(QDockWidget):
 
     def refresh_cameras(self):
         """Discover all cameras, populate UI, and start thumbnail generation."""
+        # Clean up any legacy duplicate LightMix elements in Corona
+        try:
+            light_utils.cleanup_duplicate_corona_lightmix_elements()
+        except Exception:
+            pass
+
         cameras = camera_utils.get_all_cameras()
         self.ui.populate_cameras(cameras)
         
