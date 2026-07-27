@@ -161,7 +161,7 @@ clear temp on MAX exit
         "Icon.svg"
     ]
     
-    output_filename = "FocusCam_01.mzp"
+    output_filename = "FocusCam_02.mzp"
     output_path = os.path.join(current_dir, output_filename)
     
     print("\nНачало сборки установщика...")
