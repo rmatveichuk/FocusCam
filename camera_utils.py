@@ -92,6 +92,24 @@ def _get_res_ca_def():
 # 1. Custom Attributes
 # ===================================================================
 
+def is_rendering() -> bool:
+    """Return True if 3ds Max is currently rendering (Batch, Production, or IPR)."""
+    if rt is None:
+        return False
+    try:
+        if hasattr(rt, "maxOps") and hasattr(rt.maxOps, "isRendering"):
+            if bool(rt.maxOps.isRendering()):
+                return True
+    except Exception:
+        pass
+    try:
+        if hasattr(rt, "vrayIsRenderingIPR") and int(rt.vrayIsRenderingIPR()) > 0:
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def is_node_valid(node) -> bool:
     """Return True if node is not None and is a valid (not deleted) 3ds Max scene object."""
     if rt is None or node is None:
@@ -222,7 +240,7 @@ def grab_viewport_thumbnail(camera_node, width: int = 200, height: int = 112):
     Grab a viewport thumbnail through *camera_node* and return a ``QPixmap``.
     Preserves original viewport state and transform matrix (TM) so Perspective is NEVER corrupted.
     """
-    if rt is None or QPixmap is None or not is_node_valid(camera_node):
+    if rt is None or QPixmap is None or not is_node_valid(camera_node) or is_rendering():
         return None
 
     orig_active = int(rt.viewport.activeViewport)

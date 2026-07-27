@@ -428,6 +428,12 @@ class OverlayManager:
         """
         if rt is None or pymxs is None:
             return
+        try:
+            import camera_utils
+            if camera_utils.is_rendering():
+                return
+        except Exception:
+            pass
         if self.target_camera_node is None:
             return
         if not self.active_overlays:

@@ -198,6 +198,11 @@ class FocusCamWindow(QDockWidget):
 
     def _process_next_thumbnail(self):
         """Timer callback to generate thumbnails one by one without freezing UI."""
+        if camera_utils.is_rendering():
+            self._thumb_timer.stop()
+            self._thumb_queue.clear()
+            return
+
         if not self._thumb_queue:
             self._thumb_timer.stop()
             return
